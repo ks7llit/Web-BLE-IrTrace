@@ -29,255 +29,225 @@
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    font-family: var(--sans);
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    padding-bottom: 48px;
-  }
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); padding-bottom: 48px; }
 
   /* HEADER */
   header {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 0 20px;
-    height: 58px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    box-shadow: var(--shadow);
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 20px; height: 58px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100; box-shadow: var(--shadow);
   }
-
   .brand { display: flex; align-items: center; gap: 11px; }
-
   .brand-icon {
-    width: 36px; height: 36px;
-    background: var(--accent);
-    border-radius: 9px;
+    width: 36px; height: 36px; background: var(--accent); border-radius: 9px;
     display: flex; align-items: center; justify-content: center;
   }
   .brand-icon svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-
   .brand-name { font-family: var(--mono); font-weight: 700; font-size: .95rem; }
   .brand-sub  { font-size: .63rem; color: var(--muted); font-family: var(--mono); }
 
   #btn-connect {
     display: flex; align-items: center; gap: 8px;
-    padding: 9px 18px;
-    border: none; border-radius: 9px;
+    padding: 9px 18px; border: none; border-radius: 9px;
     font-family: var(--sans); font-size: .85rem; font-weight: 600;
-    cursor: pointer; transition: all .15s;
-    background: var(--accent); color: #fff;
-    box-shadow: 0 2px 6px rgba(0,82,204,.25);
+    cursor: pointer; background: var(--accent); color: #fff;
+    box-shadow: 0 2px 6px rgba(0,82,204,.25); transition: all .15s;
   }
-  #btn-connect:hover       { background: #003fa3; }
-  #btn-connect.conn        { background: var(--red-lt); color: var(--red); box-shadow: none; }
-  #btn-connect.conn:hover  { background: #fecaca; }
-
+  #btn-connect:hover      { background: #003fa3; }
+  #btn-connect.conn       { background: var(--red-lt); color: var(--red); box-shadow: none; }
+  #btn-connect.conn:hover { background: #fecaca; }
   .ble-dot {
     width: 8px; height: 8px; border-radius: 50%;
-    background: rgba(255,255,255,.6); flex-shrink: 0; transition: all .3s;
+    background: rgba(255,255,255,.6); flex-shrink: 0;
   }
   #btn-connect.conn .ble-dot { background: var(--red); box-shadow: 0 0 0 3px rgba(220,38,38,.2); }
 
   /* STATUS STRIP */
   #status-strip {
     font-family: var(--mono); font-size: .7rem;
-    padding: 7px 20px;
-    display: flex; align-items: center; gap: 8px;
+    padding: 7px 20px; display: flex; align-items: center; gap: 8px;
     background: var(--accent-lt); color: var(--accent);
-    border-bottom: 1px solid #c5d8ff;
-    transition: all .3s;
+    border-bottom: 1px solid #c5d8ff; transition: all .3s;
   }
   #status-strip.ok   { background: var(--green-lt);  color: var(--green);  border-color: #bbf7d0; }
   #status-strip.err  { background: var(--red-lt);    color: var(--red);    border-color: #fecaca; }
   #status-strip.warn { background: var(--orange-lt); color: var(--orange); border-color: #fde68a; }
-
-  .strip-dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: currentColor; flex-shrink: 0;
+  .sdot {
+    width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0;
     animation: blink 2s infinite;
   }
   @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
-  #status-strip.ok .strip-dot, #status-strip.err .strip-dot { animation: none; }
+  #status-strip.ok .sdot, #status-strip.err .sdot { animation: none; }
 
   /* LAYOUT */
-  .wrap {
-    max-width: 600px; margin: 0 auto;
-    padding: 20px 16px 0;
-    display: flex; flex-direction: column; gap: 14px;
-  }
+  .wrap { max-width: 600px; margin: 0 auto; padding: 20px 16px 0; display: flex; flex-direction: column; gap: 14px; }
 
   /* CARD */
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--r);
-    box-shadow: var(--shadow);
-    overflow: hidden;
-  }
-
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
   .card-head {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 11px 16px;
-    background: var(--surface2);
-    border-bottom: 1px solid var(--border);
+    padding: 11px 16px; background: var(--surface2); border-bottom: 1px solid var(--border);
   }
-
-  .card-label {
-    font-family: var(--mono); font-size: .65rem; font-weight: 700;
-    letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
-  }
-
-  .pill {
-    font-family: var(--mono); font-size: .62rem; font-weight: 700;
-    padding: 3px 9px; border-radius: 20px; letter-spacing: .04em;
-  }
+  .card-label { font-family: var(--mono); font-size: .65rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .pill { font-family: var(--mono); font-size: .62rem; font-weight: 700; padding: 3px 9px; border-radius: 20px; }
   .pill-idle { background: #f1f3f7; color: var(--muted); }
   .pill-live { background: var(--green-lt); color: var(--green); }
-  .pill-conn { background: var(--accent-lt); color: var(--accent); }
+  .pill-ok   { background: var(--accent-lt); color: var(--accent); }
 
-  /* IR GRID */
+  /* IR RX GRID */
   .ir-grid { display: grid; grid-template-columns: 1fr 1fr; }
-
   .ir-cell {
-    padding: 18px 20px 16px;
-    border-right: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
+    padding: 16px 18px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
   }
-  .ir-cell:nth-child(2n)             { border-right: none; }
-  .ir-cell.full                      { grid-column: 1/-1; border-right: none; }
-  .ir-cell:nth-last-child(-n+2)      { border-bottom: none; }
-  .ir-cell.full:last-child           { border-bottom: none; }
-
-  .ir-field {
-    font-family: var(--mono); font-size: .6rem; font-weight: 700;
-    letter-spacing: .1em; text-transform: uppercase;
-    color: #a0aab8; margin-bottom: 6px;
-  }
-
-  .ir-val {
-    font-family: var(--mono); font-size: 1.25rem; font-weight: 700;
-    color: var(--text); line-height: 1.2; min-height: 1.5rem; transition: color .2s;
-  }
+  .ir-cell:nth-child(2n)        { border-right: none; }
+  .ir-cell.full                 { grid-column: 1/-1; border-right: none; }
+  .ir-cell:nth-last-child(-n+2) { border-bottom: none; }
+  .ir-cell.full:only-child, .ir-cell.full:last-child { border-bottom: none; }
+  .ir-field { font-family: var(--mono); font-size: .6rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #a0aab8; margin-bottom: 5px; }
+  .ir-val   { font-family: var(--mono); font-size: 1.2rem; font-weight: 700; color: var(--text); transition: color .2s; min-height: 1.4rem; }
   .ir-val.empty { color: #d1d5db; font-size: 1rem; }
-  .ir-val.proto { font-size: 1rem; color: var(--accent); }
+  .ir-val.proto { color: var(--accent); font-size: 1rem; }
   .ir-val.on    { color: var(--green); }
   .ir-val.off   { color: var(--red); }
-  .ir-val.na    { color: #c5cad4; font-size: .95rem; }
+  .ir-val.na    { color: #c5cad4; font-size: .9rem; }
+  @keyframes flash { 0%{background:#dbeafe} 100%{background:var(--surface)} }
+  .ir-cell.flash { animation: flash .5s ease-out forwards; }
 
-  @keyframes cellflash { 0%{background:#dbeafe} 100%{background:var(--surface)} }
-  .ir-cell.flash { animation: cellflash .55s ease-out forwards; }
+  /* ── AC CONTROL CARD ── */
+  .ctrl-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
 
-  /* SETTINGS */
-  .settings-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 11px; }
+  /* Variant selector */
+  .ctrl-row { display: flex; align-items: center; gap: 10px; }
+  .ctrl-lbl { font-family: var(--mono); font-size: .68rem; font-weight: 700; color: var(--muted); width: 72px; flex-shrink: 0; }
 
-  .s-row { display: flex; align-items: center; gap: 10px; }
-
-  .s-lbl {
-    font-family: var(--mono); font-size: .68rem; font-weight: 700;
-    color: var(--muted); width: 78px; flex-shrink: 0;
-  }
-
-  .s-row input[type=number] {
-    flex: 1; padding: 8px 11px;
+  select#sel-variant {
+    flex: 1; padding: 9px 12px;
     border: 1.5px solid var(--border); border-radius: 8px;
-    font-family: var(--mono); font-size: .82rem;
-    color: var(--text); background: var(--bg); outline: none;
-    -moz-appearance: textfield; transition: border-color .15s, background .15s;
+    font-family: var(--mono); font-size: .78rem; color: var(--text);
+    background: var(--bg); outline: none; cursor: pointer;
+    transition: border-color .15s;
   }
-  .s-row input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
-  .s-row input[type=number]:focus    { border-color: var(--accent); background: #fff; }
-  .s-row input[type=number]:disabled { opacity: .45; cursor: not-allowed; }
+  select#sel-variant:focus    { border-color: var(--accent); background: #fff; }
+  select#sel-variant:disabled { opacity: .4; cursor: not-allowed; }
 
-  .btn-set {
+  /* Temperature slider */
+  .temp-row { display: flex; align-items: center; gap: 10px; }
+  .temp-display {
+    font-family: var(--mono); font-size: 1.5rem; font-weight: 700;
+    color: var(--accent); width: 60px; text-align: center; flex-shrink: 0;
+  }
+  .temp-display span { font-size: .75rem; color: var(--muted); }
+  input[type=range] {
+    flex: 1; height: 6px; cursor: pointer; accent-color: var(--accent);
+  }
+  input[type=range]:disabled { opacity: .4; cursor: not-allowed; }
+
+  .temp-btns { display: flex; gap: 6px; }
+  .btn-temp {
+    width: 34px; height: 34px; border: 1.5px solid var(--border); border-radius: 8px;
+    background: var(--bg); font-size: 1.1rem; font-weight: 700; color: var(--text);
+    cursor: pointer; transition: all .12s; display: flex; align-items: center; justify-content: center;
+  }
+  .btn-temp:hover    { border-color: var(--accent); background: var(--accent-lt); color: var(--accent); }
+  .btn-temp:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* Repeat */
+  .repeat-row { display: flex; align-items: center; gap: 10px; }
+  input#inp-repeat {
+    width: 64px; padding: 8px 10px;
+    border: 1.5px solid var(--border); border-radius: 8px;
+    font-family: var(--mono); font-size: .85rem; color: var(--text);
+    background: var(--bg); outline: none; text-align: center;
+    -moz-appearance: textfield; transition: border-color .15s;
+  }
+  input#inp-repeat::-webkit-inner-spin-button { -webkit-appearance: none; }
+  input#inp-repeat:focus    { border-color: var(--accent); background: #fff; }
+  input#inp-repeat:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* Power buttons */
+  .power-row { display: flex; gap: 10px; }
+  .btn-power {
+    flex: 1; padding: 13px;
+    border: none; border-radius: 10px;
+    font-family: var(--mono); font-size: .85rem; font-weight: 700;
+    cursor: pointer; transition: all .15s; letter-spacing: .04em;
+  }
+  .btn-on  { background: var(--green-lt); color: var(--green); border: 1.5px solid #86efac; }
+  .btn-on:hover  { background: #bbf7d0; }
+  .btn-off { background: var(--red-lt);  color: var(--red);   border: 1.5px solid #fca5a5; }
+  .btn-off:hover { background: #fecaca; }
+  .btn-power:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* Set temp button */
+  .btn-set-temp {
+    padding: 10px; border: none; border-radius: 9px;
+    font-family: var(--mono); font-size: .78rem; font-weight: 700;
+    background: var(--accent); color: #fff; cursor: pointer; transition: background .15s;
+    width: 100%; letter-spacing: .03em;
+  }
+  .btn-set-temp:hover    { background: #003fa3; }
+  .btn-set-temp:disabled { background: #d1d5db; cursor: not-allowed; }
+
+  /* Set repeat button */
+  .btn-set-rpt {
     padding: 8px 14px; border: none; border-radius: 8px;
     font-family: var(--mono); font-size: .72rem; font-weight: 700;
-    background: var(--accent); color: #fff;
-    cursor: pointer; transition: all .15s; white-space: nowrap;
+    background: var(--accent); color: #fff; cursor: pointer; transition: background .15s;
   }
-  .btn-set:hover    { background: #003fa3; }
-  .btn-set:disabled { opacity: .35; cursor: not-allowed; }
-  .btn-set.grey     { background: #6b7280; }
-  .btn-set.grey:hover { background: #4b5563; }
+  .btn-set-rpt:hover    { background: #003fa3; }
+  .btn-set-rpt:disabled { opacity: .4; cursor: not-allowed; }
 
+  /* TX status bar */
+  .tx-status {
+    font-family: var(--mono); font-size: .72rem; font-weight: 600;
+    padding: 9px 14px; border-radius: 8px;
+    background: #f1f3f7; color: var(--muted);
+    text-align: center; transition: all .3s;
+  }
+  .tx-status.sending { background: var(--orange-lt); color: var(--orange); }
+  .tx-status.ok      { background: var(--green-lt);  color: var(--green); }
+  .tx-status.err     { background: var(--red-lt);    color: var(--red); }
+
+  /* Divider */
+  .divider { height: 1px; background: var(--border); }
+
+  /* RAW toggle row */
   .raw-pair { display: flex; gap: 6px; flex: 1; }
-
   .btn-tog {
     flex: 1; padding: 8px;
     border: 1.5px solid var(--border); border-radius: 8px;
     font-family: var(--mono); font-size: .72rem; font-weight: 700;
-    background: var(--bg); color: var(--muted);
-    cursor: pointer; transition: all .15s;
+    background: var(--bg); color: var(--muted); cursor: pointer; transition: all .15s;
   }
   .btn-tog:disabled   { opacity: .35; cursor: not-allowed; }
   .btn-tog.active-on  { border-color: var(--green); background: var(--green-lt); color: var(--green); }
   .btn-tog.active-off { border-color: var(--red);   background: var(--red-lt);   color: var(--red);   }
 
-  .s-divider { height: 1px; background: var(--border); }
-
   /* LOG */
   .log-wrap { padding: 12px 16px; }
-
-  #log {
-    font-family: var(--mono); font-size: .71rem;
-    line-height: 1.75; height: 200px; overflow-y: auto;
-  }
-  #log::-webkit-scrollbar       { width: 4px; }
+  #log { font-family: var(--mono); font-size: .71rem; line-height: 1.75; height: 180px; overflow-y: auto; }
+  #log::-webkit-scrollbar { width: 4px; }
   #log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-  .ll  { display: flex; gap: 8px; }
-  .lt  { color: #b0b8c8; flex-shrink: 0; }
-  .lm  { word-break: break-all; }
+  .ll { display: flex; gap: 8px; }
+  .lt { color: #b0b8c8; flex-shrink: 0; }
+  .lm { word-break: break-all; }
   .lm.rx  { color: var(--accent); }
   .lm.tx  { color: var(--green); }
   .lm.err { color: var(--red); }
   .lm.sys { color: var(--muted); font-style: italic; }
+  .lm.txok{ color: var(--green); font-weight: 600; }
 
   /* SEND ROW */
-  .send-row {
-    display: flex; gap: 8px;
-    padding: 12px 16px;
-    border-top: 1px solid var(--border);
-    background: var(--surface2);
-  }
-
-  #inp-send {
-    flex: 1; padding: 9px 13px;
-    border: 1.5px solid var(--border); border-radius: 9px;
-    font-family: var(--mono); font-size: .82rem;
-    outline: none; background: #fff; transition: border-color .15s;
-  }
+  .send-row { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); background: var(--surface2); }
+  #inp-send { flex: 1; padding: 9px 13px; border: 1.5px solid var(--border); border-radius: 9px; font-family: var(--mono); font-size: .82rem; outline: none; background: #fff; transition: border-color .15s; }
   #inp-send:focus    { border-color: var(--accent); }
   #inp-send:disabled { background: var(--bg); cursor: not-allowed; }
-
-  #btn-send {
-    padding: 9px 20px;
-    background: var(--accent); color: #fff;
-    border: none; border-radius: 9px;
-    font-family: var(--mono); font-size: .78rem; font-weight: 700;
-    cursor: pointer; transition: background .15s;
-  }
+  #btn-send { padding: 9px 20px; background: var(--accent); color: #fff; border: none; border-radius: 9px; font-family: var(--mono); font-size: .78rem; font-weight: 700; cursor: pointer; transition: background .15s; }
   #btn-send:hover    { background: #003fa3; }
   #btn-send:disabled { background: #d1d5db; cursor: not-allowed; }
 
-  /* NO BLE */
-  #no-ble {
-    display: none;
-    background: var(--red-lt); border: 1px solid #fecaca;
-    border-radius: var(--r); padding: 16px;
-    font-size: .85rem; color: var(--red); line-height: 1.6;
-  }
-
-  .footer {
-    text-align: center; font-family: var(--mono);
-    font-size: .6rem; color: #c0c8d4; margin-top: 8px;
-  }
+  .footer { text-align: center; font-family: var(--mono); font-size: .6rem; color: #c0c8d4; margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -289,7 +259,7 @@
     </div>
     <div>
       <div class="brand-name">IrTrace</div>
-      <div class="brand-sub">ESP32-C5 · BLE Monitor</div>
+      <div class="brand-sub">ESP32-C5 · RX + TX · BLE</div>
     </div>
   </div>
   <button id="btn-connect" onclick="toggleConnect()">
@@ -299,22 +269,16 @@
 </header>
 
 <div id="status-strip">
-  <span class="strip-dot"></span>
-  <span id="strip-msg">Disconnected — tap Connect to scan for IrTrace-BLE</span>
+  <span class="sdot"></span>
+  <span id="strip-msg">Disconnected — tap Connect to scan</span>
 </div>
 
 <div class="wrap">
 
-  <div id="no-ble">
-    ⚠️ <strong>Web Bluetooth not supported.</strong><br>
-    Use <strong>Chrome on Android</strong> or <strong>Chrome on Desktop</strong>.
-    Safari and Firefox are not supported.
-  </div>
-
-  <!-- IR Decoded Signal -->
+  <!-- ── IR RECEIVED SIGNAL ── -->
   <div class="card">
     <div class="card-head">
-      <span class="card-label">IR Decoded Signal</span>
+      <span class="card-label">IR Received Signal</span>
       <div style="display:flex;align-items:center;gap:8px">
         <span id="last-ts" style="font-family:var(--mono);font-size:.6rem;color:#b8bfc9"></span>
         <span class="pill pill-idle" id="ir-pill">Waiting</span>
@@ -333,9 +297,9 @@
         <div class="ir-field">Mode</div>
         <div class="ir-val empty" id="val-mode">—</div>
       </div>
-      <div class="ir-cell" id="cell-temp">
-        <div class="ir-field">Temperature</div>
-        <div class="ir-val empty" id="val-temp">—</div>
+      <div class="ir-cell" id="cell-temp-rx">
+        <div class="ir-field">Temperature (RX)</div>
+        <div class="ir-val empty" id="val-temp-rx">—</div>
       </div>
       <div class="ir-cell" id="cell-fan">
         <div class="ir-field">Fan Speed</div>
@@ -344,47 +308,170 @@
     </div>
   </div>
 
-  <!-- Receiver Settings -->
+  <!-- ── AC CONTROL (TX) ── -->
   <div class="card">
     <div class="card-head">
-      <span class="card-label">Receiver Settings</span>
-      <span class="pill pill-idle" id="set-pill">Not Connected</span>
+      <span class="card-label">AC Control · IR Transmit</span>
+      <span class="pill pill-idle" id="tx-pill">Not Connected</span>
     </div>
-    <div class="settings-body">
-      <div class="s-row">
-        <span class="s-lbl">Buffer</span>
-        <input type="number" id="inp-buf" value="4096" min="256" max="16384" disabled>
-        <button class="btn-set" id="btn-buf" disabled onclick="sendSetting('BUF=','inp-buf')">SET</button>
+    <div class="ctrl-body">
+
+      <!-- Variant -->
+      <div class="ctrl-row">
+        <span class="ctrl-lbl">Brand</span>
+        <select id="sel-variant" disabled onchange="sendVariant()">
+          <option value="0">0 — Mitsubishi STD 144-bit</option>
+          <option value="1" selected>1 — Mitsubishi 112-bit ★ default</option>
+          <option value="2">2 — Mitsubishi 136-bit</option>
+          <option value="3">3 — Mitsubishi Heavy 152-bit</option>
+          <option value="4">4 — Mitsubishi Heavy 88-bit</option>
+          <option value="5">5 — Daikin STD 280-bit</option>
+          <option value="6">6 — Daikin2 312-bit</option>
+          <option value="7">7 — Daikin64 64-bit</option>
+          <option value="8">8 — Daikin128 128-bit</option>
+          <option value="9">9 — Daikin152 152-bit</option>
+          <option value="10">10 — Daikin160 160-bit</option>
+          <option value="11">11 — Daikin176 176-bit</option>
+          <option value="12">12 — Daikin200 200-bit [STUB]</option>
+          <option value="13">13 — Daikin216 216-bit</option>
+          <option value="14">14 — Daikin312 312-bit</option>
+          <option value="15">15 — Fujitsu 56-128-bit</option>
+          <option value="16">16 — Panasonic 216-bit</option>
+          <option value="17">17 — Panasonic32 32-bit</option>
+          <option value="18">18 — Samsung 112/168-bit</option>
+          <option value="19">19 — LG 28-32-bit</option>
+          <option value="20">20 — Hitachi STD 224-bit</option>
+          <option value="21">21 — Hitachi AC1 104-bit</option>
+          <option value="22">22 — Hitachi AC2 [STUB]</option>
+          <option value="23">23 — Hitachi AC3 [STUB]</option>
+          <option value="24">24 — Hitachi AC264 264-bit</option>
+          <option value="25">25 — Hitachi AC296 296-bit</option>
+          <option value="26">26 — Hitachi AC344 344-bit</option>
+          <option value="27">27 — Hitachi AC424 424-bit</option>
+          <option value="28">28 — Toshiba 72-bit+</option>
+          <option value="29">29 — Haier STD 72-bit</option>
+          <option value="30">30 — Haier YRW02 112-bit</option>
+          <option value="31">31 — Haier AC160 160-bit</option>
+          <option value="32">32 — Haier AC176 176-bit</option>
+          <option value="33">33 — Kelvinator 128-bit</option>
+          <option value="34">34 — Gree 64-bit</option>
+          <option value="35">35 — Midea 48-bit</option>
+          <option value="36">36 — Midea24 24-bit</option>
+          <option value="37">37 — Coolix 24-bit</option>
+          <option value="38">38 — Coolix48 48-bit</option>
+          <option value="39">39 — Carrier32 [STUB]</option>
+          <option value="40">40 — Carrier40 [STUB]</option>
+          <option value="41">41 — Carrier64 64-bit</option>
+          <option value="42">42 — Carrier84 [STUB]</option>
+          <option value="43">43 — Carrier128 [STUB]</option>
+          <option value="44">44 — Sharp 104-bit</option>
+          <option value="45">45 — Whirlpool 168-bit</option>
+          <option value="46">46 — Electra/AUX 104-bit</option>
+          <option value="47">47 — Vestel 56-bit</option>
+          <option value="48">48 — TCL 112-bit</option>
+          <option value="49">49 — TCL 96-bit</option>
+          <option value="50">50 — Teco 35-bit</option>
+          <option value="51">51 — Goodweather 48-bit</option>
+          <option value="52">52 — Neoclima 96-bit</option>
+          <option value="53">53 — Amcor 64-bit</option>
+          <option value="54">54 — Airwell 34-bit</option>
+          <option value="55">55 — Delonghi 64-bit</option>
+          <option value="56">56 — Sanyo STD 72-bit</option>
+          <option value="57">57 — Sanyo88 88-bit</option>
+          <option value="58">58 — Sanyo152 [STUB]</option>
+          <option value="59">59 — Voltas 120-bit</option>
+          <option value="60">60 — Mirage 120-bit</option>
+          <option value="61">61 — Corona 168-bit</option>
+          <option value="62">62 — Airton 56-bit</option>
+          <option value="63">63 — EcoClim 56-bit</option>
+          <option value="64">64 — Kelon 48-bit</option>
+          <option value="65">65 — Kelon168 168-bit</option>
+          <option value="66">66 — Rhoss 96-bit</option>
+          <option value="67">67 — Technibel 56-bit</option>
+          <option value="68">68 — Transcold 136-bit</option>
+          <option value="69">69 — Trotec STD 56-bit</option>
+          <option value="70">70 — Trotec3550 120-bit</option>
+          <option value="71">71 — Truma variable</option>
+          <option value="72">72 — Bosch144 144-bit</option>
+          <option value="73">73 — Argo WREM2 96-bit</option>
+          <option value="74">74 — Argo WREM3 variable</option>
+          <option value="75">75 — Eurom 96-bit</option>
+          <option value="76">76 — York 88-bit</option>
+          <option value="81">81 — Godrej M1 → Coolix</option>
+          <option value="82">82 — Lloyd M1 → Coolix</option>
+          <option value="83">83 — Blue Star M1 → Coolix</option>
+          <option value="84">84 — Videocon M1 → TCL</option>
+          <option value="85">85 — Onida M1 → LG</option>
+          <option value="86">86 — Cruise M1 → Daikin</option>
+          <option value="87">87 — Sansui M1 → Coolix</option>
+          <option value="88">88 — Hyundai M1 → LG</option>
+          <option value="89">89 — IFB M1 → Panasonic</option>
+          <option value="90">90 — Philips M1 → Daikin</option>
+          <option value="91">91 — Hitech → Sharp</option>
+          <option value="92">92 — Suzuki → Coolix</option>
+        </select>
       </div>
-      <div class="s-row">
-        <span class="s-lbl">Timeout</span>
-        <input type="number" id="inp-timeout" value="15" min="1" max="250" disabled>
-        <button class="btn-set" id="btn-timeout" disabled onclick="sendSetting('TIMEOUT=','inp-timeout')">SET</button>
+
+      <!-- Temperature -->
+      <div>
+        <div class="ctrl-row" style="margin-bottom:8px">
+          <span class="ctrl-lbl">Temp</span>
+          <div class="temp-row" style="flex:1">
+            <button class="btn-temp" id="btn-tminus" disabled onclick="adjustTemp(-1)">−</button>
+            <input type="range" id="slider-temp" min="16" max="30" value="24"
+                   disabled oninput="onSlider(this.value)">
+            <button class="btn-temp" id="btn-tplus"  disabled onclick="adjustTemp(+1)">+</button>
+          </div>
+          <div class="temp-display" id="temp-display">24<span>°C</span></div>
+        </div>
+        <button class="btn-set-temp" id="btn-settemp" disabled onclick="sendSetTemp()">
+          SET TEMPERATURE
+        </button>
       </div>
-      <div class="s-row">
-        <span class="s-lbl">Tolerance</span>
-        <input type="number" id="inp-tol" value="25" min="1" max="49" disabled>
-        <button class="btn-set" id="btn-tol" disabled onclick="sendSetting('TOL=','inp-tol')">SET</button>
+
+      <!-- Repeat count -->
+      <div class="repeat-row">
+        <span class="ctrl-lbl">Repeat</span>
+        <input type="number" id="inp-repeat" value="3" min="1" max="10" disabled>
+        <button class="btn-set-rpt" id="btn-setrpt" disabled onclick="sendRepeat()">SET</button>
+        <span style="font-family:var(--mono);font-size:.65rem;color:var(--muted);margin-left:4px">×  IR sends</span>
       </div>
-      <div class="s-divider"></div>
-      <div class="s-row">
-        <span class="s-lbl">Raw Out</span>
+
+      <div class="divider"></div>
+
+      <!-- Power buttons -->
+      <div class="power-row">
+        <button class="btn-power btn-on"  id="btn-on"  disabled onclick="sendPower('on')">
+          ⚡ POWER ON
+        </button>
+        <button class="btn-power btn-off" id="btn-off" disabled onclick="sendPower('off')">
+          ⏹ POWER OFF
+        </button>
+      </div>
+
+      <!-- TX Status -->
+      <div class="tx-status" id="tx-status">— Ready —</div>
+
+      <div class="divider"></div>
+
+      <!-- RAW toggle -->
+      <div class="ctrl-row">
+        <span class="ctrl-lbl">Raw Out</span>
         <div class="raw-pair">
           <button class="btn-tog" id="btn-raw-on"  disabled onclick="sendCmd('RAW=ON')">ON</button>
           <button class="btn-tog" id="btn-raw-off" disabled onclick="sendCmd('RAW=OFF')">OFF</button>
         </div>
-        <button class="btn-set grey" id="btn-show" disabled onclick="sendCmd('SHOW')">SHOW</button>
       </div>
+
     </div>
   </div>
 
-  <!-- Message Log -->
+  <!-- ── MESSAGE LOG ── -->
   <div class="card">
     <div class="card-head">
       <span class="card-label">Message Log</span>
       <span onclick="clearLog()"
-        style="font-family:var(--mono);font-size:.65rem;color:var(--muted);
-               cursor:pointer;padding:2px 8px;border-radius:5px">Clear</span>
+        style="font-family:var(--mono);font-size:.65rem;color:var(--muted);cursor:pointer;padding:2px 8px;border-radius:5px">Clear</span>
     </div>
     <div class="log-wrap">
       <div id="log">
@@ -392,16 +479,19 @@
       </div>
     </div>
     <div class="send-row">
-      <input id="inp-send" placeholder="Type command (e.g. SHOW, TOL=20)..." disabled
-             onkeydown="if(event.key==='Enter') sendMsg()">
-      <button id="btn-send" disabled onclick="sendMsg()">SEND</button>
+      <input id="inp-send" placeholder="Manual command (e.g. v 5, on 24, off, r 3)..." disabled
+             onkeydown="if(event.key==='Enter') sendManual()">
+      <button id="btn-send" disabled onclick="sendManual()">SEND</button>
     </div>
   </div>
 
-  <div class="footer">IrTrace · ESP32-C5 BLE Monitor · Chrome only</div>
+  <div class="footer">IrTrace · ESP32-C5 · RX + TX · BLE · Chrome only</div>
 </div>
 
 <script>
+// ============================================================
+// BLE UUIDs — Nordic UART Service
+// ============================================================
 const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const TX_UUID      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 const RX_UUID      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
@@ -412,12 +502,9 @@ let connected = false;
 const enc     = new TextEncoder();
 const dec     = new TextDecoder();
 
-if (!navigator.bluetooth) {
-  document.getElementById('no-ble').style.display = 'block';
-  document.getElementById('btn-connect').disabled = true;
-  setStrip('err', 'Web Bluetooth not supported — use Chrome on Android or Desktop');
-}
-
+// ============================================================
+// Connect / Disconnect
+// ============================================================
 async function toggleConnect() {
   connected ? disconnect() : await connect();
 }
@@ -425,10 +512,8 @@ async function toggleConnect() {
 async function connect() {
   setStrip('warn', 'Scanning for IrTrace-BLE...');
   try {
-    // FIX: filter by SERVICE UUID (in main ad packet)
-    // NOT by name (in scan response — Chrome never reads it)
     bleDevice = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [SERVICE_UUID] }]
+      filters: [{ services: [SERVICE_UUID] }]  // UUID filter — not name
     });
     bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
     setStrip('warn', 'Connecting...');
@@ -440,12 +525,8 @@ async function connect() {
     rxChar = await service.getCharacteristic(RX_UUID);
     onConnected();
   } catch (err) {
-    if (err.name === 'NotFoundError') {
-      setStrip('', 'Scan cancelled.');
-    } else {
-      setStrip('err', 'Failed: ' + err.message);
-      addLog('err', err.message);
-    }
+    if (err.name === 'NotFoundError') setStrip('', 'Scan cancelled.');
+    else { setStrip('err', 'Failed: ' + err.message); addLog('err', err.message); }
   }
 }
 
@@ -459,8 +540,8 @@ function onConnected() {
   document.getElementById('btn-label').textContent = 'Disconnect';
   setStrip('ok', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
   setControls(true);
-  setPill('ir-pill',  'pill pill-live', 'Live');
-  setPill('set-pill', 'pill pill-conn', 'Connected');
+  setPill('ir-pill', 'pill pill-live', 'Live');
+  setPill('tx-pill', 'pill pill-ok',   'Connected');
   addLog('sys', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
 }
 
@@ -470,37 +551,83 @@ function onDisconnected() {
   document.getElementById('btn-label').textContent = 'Connect';
   setStrip('', 'Disconnected — tap Connect to reconnect');
   setControls(false);
-  setPill('ir-pill',  'pill pill-idle', 'Waiting');
-  setPill('set-pill', 'pill pill-idle', 'Not Connected');
+  setPill('ir-pill', 'pill pill-idle', 'Waiting');
+  setPill('tx-pill', 'pill pill-idle', 'Not Connected');
+  setTxStatus('', '— Disconnected —');
   addLog('sys', 'Disconnected');
 }
 
+// ============================================================
+// Incoming notifications from ESP32
+// ============================================================
 function onNotify(event) {
   const raw = dec.decode(event.target.value).trim();
   if (!raw) return;
   addLog('rx', raw);
-  const ci = raw.indexOf(':');
-  if (ci === -1) return;
+
+  const ci  = raw.indexOf(':');
+  if (ci === -1) {
+    // no colon — just log it
+    return;
+  }
   const key = raw.substring(0, ci).toUpperCase();
   const val = raw.substring(ci + 1).trim();
+
   switch (key) {
+    // ── IR received fields ──
     case 'PROTOCOL': updateIR('protocol', val); break;
     case 'POWER':    updateIR('power',    val); break;
     case 'MODE':     updateIR('mode',     val); break;
-    case 'TEMP':     updateIR('temp',     val); break;
+    case 'TEMP_RX':  updateIR('temp-rx',  val); break;
     case 'FAN':      updateIR('fan',      val); break;
-    case 'BUF':     syncNum('inp-buf',     val); break;
-    case 'TIMEOUT': syncNum('inp-timeout', val); break;
-    case 'TOL':     syncNum('inp-tol',     val); break;
-    case 'RAW':
-      document.getElementById('btn-raw-on').classList.toggle('active-on',  val==='ON');
-      document.getElementById('btn-raw-off').classList.toggle('active-off', val==='OFF');
+
+    // ── TX feedback ──
+    case 'TX':
+      if (val === 'OK') {
+        setTxStatus('ok', '✅ IR Sent OK');
+        addLog('txok', 'IR transmitted successfully');
+        setTimeout(() => setTxStatus('', '— Ready —'), 3000);
+      } else {
+        setTxStatus('err', '❌ TX Error: ' + val);
+      }
       break;
-    case 'SETTINGS': addLog('sys', 'Settings confirmed by ESP32'); break;
-    case 'ERROR':    addLog('err', 'ESP32: ' + val); break;
+
+    // ── State sync from ESP32 ──
+    case 'VAR':
+      syncSelect('sel-variant', val);
+      addLog('sys', 'Variant: ' + val);
+      break;
+    case 'PWR':
+      addLog('sys', 'Power state: ' + val);
+      break;
+    case 'TEMP':
+      // This is TX temp echo (not RX decoded temp)
+      const t = parseInt(val);
+      if (!isNaN(t) && t >= 16 && t <= 30) {
+        document.getElementById('slider-temp').value = t;
+        document.getElementById('temp-display').innerHTML = t + '<span>°C</span>';
+      }
+      break;
+    case 'RPT':
+      const r = parseInt(val);
+      if (!isNaN(r)) document.getElementById('inp-repeat').value = r;
+      addLog('sys', 'Repeat: ' + val);
+      break;
+    case 'RAW':
+      document.getElementById('btn-raw-on').classList.toggle('active-on',  val === 'ON');
+      document.getElementById('btn-raw-off').classList.toggle('active-off', val === 'OFF');
+      break;
+    case 'ERR':
+      setTxStatus('err', '⚠️ ' + val);
+      addLog('err', val);
+      setTimeout(() => setTxStatus('', '— Ready —'), 4000);
+      break;
   }
 }
 
+// ============================================================
+// IR RX field update
+// ============================================================
 function updateIR(field, val) {
   const el   = document.getElementById('val-' + field);
   const cell = document.getElementById('cell-' + field);
@@ -512,21 +639,65 @@ function updateIR(field, val) {
     if (field === 'protocol') {
       el.classList.add('proto');
       document.getElementById('last-ts').textContent =
-        'Last: ' + new Date().toLocaleTimeString('en-GB',{hour12:false});
+        'Last: ' + new Date().toLocaleTimeString('en-GB', { hour12: false });
     }
     if (field === 'power') el.classList.add(val === 'ON' ? 'on' : 'off');
   }
-  cell.classList.remove('flash');
-  void cell.offsetWidth;
-  cell.classList.add('flash');
-  setTimeout(() => cell.classList.remove('flash'), 600);
+  if (cell) {
+    cell.classList.remove('flash');
+    void cell.offsetWidth;
+    cell.classList.add('flash');
+    setTimeout(() => cell.classList.remove('flash'), 600);
+  }
 }
 
-function syncNum(id, val) {
-  const el = document.getElementById(id);
-  if (el && !isNaN(parseInt(val))) el.value = parseInt(val);
+// ============================================================
+// AC Control — send commands
+// ============================================================
+function sendVariant() {
+  const id = document.getElementById('sel-variant').value;
+  sendCmd('v ' + id);
 }
 
+function adjustTemp(delta) {
+  const s = document.getElementById('slider-temp');
+  let v = parseInt(s.value) + delta;
+  v = Math.max(16, Math.min(30, v));
+  s.value = v;
+  onSlider(v);
+}
+
+function onSlider(val) {
+  document.getElementById('temp-display').innerHTML = val + '<span>°C</span>';
+}
+
+function sendSetTemp() {
+  const temp = document.getElementById('slider-temp').value;
+  setTxStatus('sending', '⏳ Sending temp ' + temp + '°C...');
+  sendCmd('t ' + temp);
+}
+
+function sendRepeat() {
+  const rpt = document.getElementById('inp-repeat').value;
+  const n = parseInt(rpt);
+  if (isNaN(n) || n < 1 || n > 10) { addLog('err', 'Repeat must be 1-10'); return; }
+  sendCmd('r ' + n);
+}
+
+function sendPower(cmd) {
+  if (cmd === 'on') {
+    const temp = document.getElementById('slider-temp').value;
+    setTxStatus('sending', '⏳ Sending POWER ON ' + temp + '°C...');
+    sendCmd('on ' + temp);
+  } else {
+    setTxStatus('sending', '⏳ Sending POWER OFF...');
+    sendCmd('off');
+  }
+}
+
+// ============================================================
+// Raw BLE send
+// ============================================================
 async function sendCmd(cmd) {
   if (!connected || !rxChar) { addLog('err', 'Not connected'); return; }
   try {
@@ -535,12 +706,7 @@ async function sendCmd(cmd) {
   } catch(err) { addLog('err', 'Send failed: ' + err.message); }
 }
 
-async function sendSetting(prefix, inputId) {
-  const val = document.getElementById(inputId).value.trim();
-  if (val) await sendCmd(prefix + val);
-}
-
-async function sendMsg() {
+async function sendManual() {
   const inp = document.getElementById('inp-send');
   const msg = inp.value.trim();
   if (!msg) return;
@@ -548,10 +714,15 @@ async function sendMsg() {
   inp.value = '';
 }
 
+// ============================================================
+// Helpers
+// ============================================================
 function setControls(on) {
-  ['btn-buf','btn-timeout','btn-tol','btn-raw-on','btn-raw-off',
-   'btn-show','inp-buf','inp-timeout','inp-tol','inp-send','btn-send']
+  ['sel-variant','slider-temp','btn-tminus','btn-tplus','btn-settemp',
+   'inp-repeat','btn-setrpt','btn-on','btn-off',
+   'btn-raw-on','btn-raw-off','inp-send','btn-send']
   .forEach(id => { const e = document.getElementById(id); if(e) e.disabled = !on; });
+  if (on) setTxStatus('', '— Ready —');
 }
 
 function setStrip(type, msg) {
@@ -562,14 +733,25 @@ function setStrip(type, msg) {
 
 function setPill(id, cls, txt) {
   const el = document.getElementById(id);
-  el.className = cls; el.textContent = txt;
+  if (el) { el.className = cls; el.textContent = txt; }
+}
+
+function setTxStatus(type, msg) {
+  const el = document.getElementById('tx-status');
+  el.className = 'tx-status ' + (type || '');
+  el.textContent = msg;
+}
+
+function syncSelect(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.value = val;
 }
 
 let logFirst = true;
 function addLog(type, msg) {
   const el = document.getElementById('log');
   if (logFirst) { el.innerHTML = ''; logFirst = false; }
-  const ts  = new Date().toLocaleTimeString('en-GB',{hour12:false});
+  const ts  = new Date().toLocaleTimeString('en-GB', { hour12: false });
   const row = document.createElement('div');
   row.className = 'll';
   row.innerHTML = `<span class="lt">${ts}</span><span class="lm ${type}">${esc(msg)}</span>`;
@@ -586,6 +768,12 @@ function clearLog() {
 
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Check Web Bluetooth support
+if (!navigator.bluetooth) {
+  setStrip('err', 'Web Bluetooth not supported — use Chrome on Android or Desktop');
+  document.getElementById('btn-connect').disabled = true;
 }
 </script>
 </body>
