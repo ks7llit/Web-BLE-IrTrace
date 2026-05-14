@@ -5,188 +5,417 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>IrTrace BLE</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg:        #eef0f4;
+    --surface:   #ffffff;
+    --surface2:  #f7f8fa;
+    --border:    #e2e5eb;
+    --text:      #111318;
+    --muted:     #6b7280;
+    --accent:    #0052cc;
+    --accent-lt: #e8f0ff;
+    --green:     #16a34a;
+    --green-lt:  #dcfce7;
+    --red:       #dc2626;
+    --red-lt:    #fee2e2;
+    --orange:    #d97706;
+    --orange-lt: #fef3c7;
+    --mono:      'JetBrains Mono', monospace;
+    --sans:      'Outfit', sans-serif;
+    --r:         12px;
+    --shadow:    0 1px 3px rgba(0,0,0,.07);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    font-family: 'Segoe UI', sans-serif;
-    background: #f0f2f5;
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
     min-height: 100vh;
+    padding-bottom: 48px;
+  }
+
+  /* HEADER */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+    height: 58px;
     display: flex;
-    flex-direction: column;
     align-items: center;
-    padding: 20px 16px;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: var(--shadow);
   }
 
-  h1 {
-    font-size: 1.3rem;
-    font-weight: 700;
-    color: #1a1d23;
-    margin-bottom: 4px;
+  .brand { display: flex; align-items: center; gap: 11px; }
+
+  .brand-icon {
+    width: 36px; height: 36px;
+    background: var(--accent);
+    border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .brand-icon svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  .brand-name { font-family: var(--mono); font-weight: 700; font-size: .95rem; }
+  .brand-sub  { font-size: .63rem; color: var(--muted); font-family: var(--mono); }
+
+  #btn-connect {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 18px;
+    border: none; border-radius: 9px;
+    font-family: var(--sans); font-size: .85rem; font-weight: 600;
+    cursor: pointer; transition: all .15s;
+    background: var(--accent); color: #fff;
+    box-shadow: 0 2px 6px rgba(0,82,204,.25);
+  }
+  #btn-connect:hover       { background: #003fa3; }
+  #btn-connect.conn        { background: var(--red-lt); color: var(--red); box-shadow: none; }
+  #btn-connect.conn:hover  { background: #fecaca; }
+
+  .ble-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: rgba(255,255,255,.6); flex-shrink: 0; transition: all .3s;
+  }
+  #btn-connect.conn .ble-dot { background: var(--red); box-shadow: 0 0 0 3px rgba(220,38,38,.2); }
+
+  /* STATUS STRIP */
+  #status-strip {
+    font-family: var(--mono); font-size: .7rem;
+    padding: 7px 20px;
+    display: flex; align-items: center; gap: 8px;
+    background: var(--accent-lt); color: var(--accent);
+    border-bottom: 1px solid #c5d8ff;
+    transition: all .3s;
+  }
+  #status-strip.ok   { background: var(--green-lt);  color: var(--green);  border-color: #bbf7d0; }
+  #status-strip.err  { background: var(--red-lt);    color: var(--red);    border-color: #fecaca; }
+  #status-strip.warn { background: var(--orange-lt); color: var(--orange); border-color: #fde68a; }
+
+  .strip-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor; flex-shrink: 0;
+    animation: blink 2s infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+  #status-strip.ok .strip-dot, #status-strip.err .strip-dot { animation: none; }
+
+  /* LAYOUT */
+  .wrap {
+    max-width: 600px; margin: 0 auto;
+    padding: 20px 16px 0;
+    display: flex; flex-direction: column; gap: 14px;
   }
 
-  .sub { font-size: 0.8rem; color: #6b7280; margin-bottom: 20px; }
-
+  /* CARD */
   .card {
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 1px 4px rgba(0,0,0,.1);
-    width: 100%;
-    max-width: 480px;
-    margin-bottom: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    box-shadow: var(--shadow);
     overflow: hidden;
   }
 
   .card-head {
-    padding: 12px 16px;
-    background: #f8f9fb;
-    border-bottom: 1px solid #e5e7eb;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: .06em;
-    text-transform: uppercase;
-    color: #6b7280;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 11px 16px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
   }
 
-  /* Status dot */
-  .dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: #d1d5db;
-    display: inline-block;
-    margin-right: 6px;
+  .card-label {
+    font-family: var(--mono); font-size: .65rem; font-weight: 700;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
   }
-  .dot.on  { background: #16a34a; box-shadow: 0 0 0 3px #dcfce7; }
-  .dot.off { background: #d1d5db; }
 
-  /* Connect button */
-  #btn-connect {
-    width: 100%;
-    max-width: 480px;
-    padding: 14px;
-    border: none;
-    border-radius: 12px;
-    font-size: 1rem;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all .15s;
-    margin-bottom: 14px;
-    background: #1a6cf5;
-    color: #fff;
+  .pill {
+    font-family: var(--mono); font-size: .62rem; font-weight: 700;
+    padding: 3px 9px; border-radius: 20px; letter-spacing: .04em;
   }
-  #btn-connect:hover  { background: #1558d6; }
-  #btn-connect.conn   { background: #fee2e2; color: #dc2626; }
+  .pill-idle { background: #f1f3f7; color: var(--muted); }
+  .pill-live { background: var(--green-lt); color: var(--green); }
+  .pill-conn { background: var(--accent-lt); color: var(--accent); }
 
-  /* Log */
+  /* IR GRID */
+  .ir-grid { display: grid; grid-template-columns: 1fr 1fr; }
+
+  .ir-cell {
+    padding: 18px 20px 16px;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .ir-cell:nth-child(2n)             { border-right: none; }
+  .ir-cell.full                      { grid-column: 1/-1; border-right: none; }
+  .ir-cell:nth-last-child(-n+2)      { border-bottom: none; }
+  .ir-cell.full:last-child           { border-bottom: none; }
+
+  .ir-field {
+    font-family: var(--mono); font-size: .6rem; font-weight: 700;
+    letter-spacing: .1em; text-transform: uppercase;
+    color: #a0aab8; margin-bottom: 6px;
+  }
+
+  .ir-val {
+    font-family: var(--mono); font-size: 1.25rem; font-weight: 700;
+    color: var(--text); line-height: 1.2; min-height: 1.5rem; transition: color .2s;
+  }
+  .ir-val.empty { color: #d1d5db; font-size: 1rem; }
+  .ir-val.proto { font-size: 1rem; color: var(--accent); }
+  .ir-val.on    { color: var(--green); }
+  .ir-val.off   { color: var(--red); }
+  .ir-val.na    { color: #c5cad4; font-size: .95rem; }
+
+  @keyframes cellflash { 0%{background:#dbeafe} 100%{background:var(--surface)} }
+  .ir-cell.flash { animation: cellflash .55s ease-out forwards; }
+
+  /* SETTINGS */
+  .settings-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 11px; }
+
+  .s-row { display: flex; align-items: center; gap: 10px; }
+
+  .s-lbl {
+    font-family: var(--mono); font-size: .68rem; font-weight: 700;
+    color: var(--muted); width: 78px; flex-shrink: 0;
+  }
+
+  .s-row input[type=number] {
+    flex: 1; padding: 8px 11px;
+    border: 1.5px solid var(--border); border-radius: 8px;
+    font-family: var(--mono); font-size: .82rem;
+    color: var(--text); background: var(--bg); outline: none;
+    -moz-appearance: textfield; transition: border-color .15s, background .15s;
+  }
+  .s-row input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+  .s-row input[type=number]:focus    { border-color: var(--accent); background: #fff; }
+  .s-row input[type=number]:disabled { opacity: .45; cursor: not-allowed; }
+
+  .btn-set {
+    padding: 8px 14px; border: none; border-radius: 8px;
+    font-family: var(--mono); font-size: .72rem; font-weight: 700;
+    background: var(--accent); color: #fff;
+    cursor: pointer; transition: all .15s; white-space: nowrap;
+  }
+  .btn-set:hover    { background: #003fa3; }
+  .btn-set:disabled { opacity: .35; cursor: not-allowed; }
+  .btn-set.grey     { background: #6b7280; }
+  .btn-set.grey:hover { background: #4b5563; }
+
+  .raw-pair { display: flex; gap: 6px; flex: 1; }
+
+  .btn-tog {
+    flex: 1; padding: 8px;
+    border: 1.5px solid var(--border); border-radius: 8px;
+    font-family: var(--mono); font-size: .72rem; font-weight: 700;
+    background: var(--bg); color: var(--muted);
+    cursor: pointer; transition: all .15s;
+  }
+  .btn-tog:disabled   { opacity: .35; cursor: not-allowed; }
+  .btn-tog.active-on  { border-color: var(--green); background: var(--green-lt); color: var(--green); }
+  .btn-tog.active-off { border-color: var(--red);   background: var(--red-lt);   color: var(--red);   }
+
+  .s-divider { height: 1px; background: var(--border); }
+
+  /* LOG */
+  .log-wrap { padding: 12px 16px; }
+
   #log {
-    padding: 12px 16px;
-    height: 240px;
-    overflow-y: auto;
-    font-family: 'Courier New', monospace;
-    font-size: 0.78rem;
-    line-height: 1.7;
+    font-family: var(--mono); font-size: .71rem;
+    line-height: 1.75; height: 200px; overflow-y: auto;
   }
+  #log::-webkit-scrollbar       { width: 4px; }
+  #log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-  .line { display: flex; gap: 8px; }
-  .ts   { color: #9ca3af; flex-shrink: 0; }
-  .rx   { color: #1a6cf5; }
-  .tx   { color: #16a34a; }
-  .sys  { color: #9ca3af; font-style: italic; }
-  .err  { color: #dc2626; }
+  .ll  { display: flex; gap: 8px; }
+  .lt  { color: #b0b8c8; flex-shrink: 0; }
+  .lm  { word-break: break-all; }
+  .lm.rx  { color: var(--accent); }
+  .lm.tx  { color: var(--green); }
+  .lm.err { color: var(--red); }
+  .lm.sys { color: var(--muted); font-style: italic; }
 
-  /* Send area */
+  /* SEND ROW */
   .send-row {
-    display: flex;
-    gap: 8px;
+    display: flex; gap: 8px;
     padding: 12px 16px;
-    border-top: 1px solid #e5e7eb;
+    border-top: 1px solid var(--border);
+    background: var(--surface2);
   }
 
   #inp-send {
-    flex: 1;
-    padding: 9px 12px;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    font-size: 0.9rem;
-    outline: none;
-    transition: border-color .15s;
+    flex: 1; padding: 9px 13px;
+    border: 1.5px solid var(--border); border-radius: 9px;
+    font-family: var(--mono); font-size: .82rem;
+    outline: none; background: #fff; transition: border-color .15s;
   }
-  #inp-send:focus { border-color: #1a6cf5; }
+  #inp-send:focus    { border-color: var(--accent); }
+  #inp-send:disabled { background: var(--bg); cursor: not-allowed; }
 
   #btn-send {
-    padding: 9px 18px;
-    background: #1a6cf5;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    font-weight: 700;
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: background .15s;
+    padding: 9px 20px;
+    background: var(--accent); color: #fff;
+    border: none; border-radius: 9px;
+    font-family: var(--mono); font-size: .78rem; font-weight: 700;
+    cursor: pointer; transition: background .15s;
   }
-  #btn-send:hover    { background: #1558d6; }
+  #btn-send:hover    { background: #003fa3; }
   #btn-send:disabled { background: #d1d5db; cursor: not-allowed; }
 
-  .status-text {
-    font-size: 0.78rem;
-    color: #6b7280;
-    padding: 0 16px 12px;
+  /* NO BLE */
+  #no-ble {
+    display: none;
+    background: var(--red-lt); border: 1px solid #fecaca;
+    border-radius: var(--r); padding: 16px;
+    font-size: .85rem; color: var(--red); line-height: 1.6;
   }
-  .status-text.ok  { color: #16a34a; }
-  .status-text.err { color: #dc2626; }
+
+  .footer {
+    text-align: center; font-family: var(--mono);
+    font-size: .6rem; color: #c0c8d4; margin-top: 8px;
+  }
 </style>
 </head>
 <body>
 
-<h1>IrTrace BLE</h1>
-<p class="sub">ESP32-C5 · Nordic UART Service</p>
-
-<button id="btn-connect" onclick="toggleConnect()">
-  🔵 Connect to IrTrace-BLE
-</button>
-
-<div class="card">
-  <div class="card-head">
-    <span><span class="dot off" id="dot"></span>Status</span>
-    <span id="status-text">Disconnected</span>
+<header>
+  <div class="brand">
+    <div class="brand-icon">
+      <svg viewBox="0 0 24 24"><path d="M9 18c-1.5-1.5-2-3.5-2-6s.5-4.5 2-6"/><path d="M15 6c1.5 1.5 2 3.5 2 6s-.5 4.5-2 6"/><circle cx="12" cy="12" r="2"/><path d="M6 21c-2.5-2.5-4-6-4-9s1.5-6.5 4-9"/><path d="M18 3c2.5 2.5 4 6 4 9s-1.5 6.5-4 9"/></svg>
+    </div>
+    <div>
+      <div class="brand-name">IrTrace</div>
+      <div class="brand-sub">ESP32-C5 · BLE Monitor</div>
+    </div>
   </div>
-  <p class="status-text" id="status-detail">Press Connect and select IrTrace-BLE from the list.</p>
+  <button id="btn-connect" onclick="toggleConnect()">
+    <span class="ble-dot"></span>
+    <span id="btn-label">Connect</span>
+  </button>
+</header>
+
+<div id="status-strip">
+  <span class="strip-dot"></span>
+  <span id="strip-msg">Disconnected — tap Connect to scan for IrTrace-BLE</span>
 </div>
 
-<div class="card">
-  <div class="card-head">
-    <span>Message Log</span>
-    <span onclick="clearLog()" style="cursor:pointer;font-size:0.7rem;color:#9ca3af">Clear</span>
+<div class="wrap">
+
+  <div id="no-ble">
+    ⚠️ <strong>Web Bluetooth not supported.</strong><br>
+    Use <strong>Chrome on Android</strong> or <strong>Chrome on Desktop</strong>.
+    Safari and Firefox are not supported.
   </div>
-  <div id="log"><div class="line"><span class="sys">— log empty —</span></div></div>
-  <div class="send-row">
-    <input id="inp-send" placeholder="Type a message..." disabled
-           onkeydown="if(event.key==='Enter') sendMsg()">
-    <button id="btn-send" disabled onclick="sendMsg()">Send</button>
+
+  <!-- IR Decoded Signal -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-label">IR Decoded Signal</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span id="last-ts" style="font-family:var(--mono);font-size:.6rem;color:#b8bfc9"></span>
+        <span class="pill pill-idle" id="ir-pill">Waiting</span>
+      </div>
+    </div>
+    <div class="ir-grid">
+      <div class="ir-cell full" id="cell-protocol">
+        <div class="ir-field">Protocol</div>
+        <div class="ir-val empty" id="val-protocol">—</div>
+      </div>
+      <div class="ir-cell" id="cell-power">
+        <div class="ir-field">Power</div>
+        <div class="ir-val empty" id="val-power">—</div>
+      </div>
+      <div class="ir-cell" id="cell-mode">
+        <div class="ir-field">Mode</div>
+        <div class="ir-val empty" id="val-mode">—</div>
+      </div>
+      <div class="ir-cell" id="cell-temp">
+        <div class="ir-field">Temperature</div>
+        <div class="ir-val empty" id="val-temp">—</div>
+      </div>
+      <div class="ir-cell" id="cell-fan">
+        <div class="ir-field">Fan Speed</div>
+        <div class="ir-val empty" id="val-fan">—</div>
+      </div>
+    </div>
   </div>
+
+  <!-- Receiver Settings -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-label">Receiver Settings</span>
+      <span class="pill pill-idle" id="set-pill">Not Connected</span>
+    </div>
+    <div class="settings-body">
+      <div class="s-row">
+        <span class="s-lbl">Buffer</span>
+        <input type="number" id="inp-buf" value="4096" min="256" max="16384" disabled>
+        <button class="btn-set" id="btn-buf" disabled onclick="sendSetting('BUF=','inp-buf')">SET</button>
+      </div>
+      <div class="s-row">
+        <span class="s-lbl">Timeout</span>
+        <input type="number" id="inp-timeout" value="15" min="1" max="250" disabled>
+        <button class="btn-set" id="btn-timeout" disabled onclick="sendSetting('TIMEOUT=','inp-timeout')">SET</button>
+      </div>
+      <div class="s-row">
+        <span class="s-lbl">Tolerance</span>
+        <input type="number" id="inp-tol" value="25" min="1" max="49" disabled>
+        <button class="btn-set" id="btn-tol" disabled onclick="sendSetting('TOL=','inp-tol')">SET</button>
+      </div>
+      <div class="s-divider"></div>
+      <div class="s-row">
+        <span class="s-lbl">Raw Out</span>
+        <div class="raw-pair">
+          <button class="btn-tog" id="btn-raw-on"  disabled onclick="sendCmd('RAW=ON')">ON</button>
+          <button class="btn-tog" id="btn-raw-off" disabled onclick="sendCmd('RAW=OFF')">OFF</button>
+        </div>
+        <button class="btn-set grey" id="btn-show" disabled onclick="sendCmd('SHOW')">SHOW</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Message Log -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-label">Message Log</span>
+      <span onclick="clearLog()"
+        style="font-family:var(--mono);font-size:.65rem;color:var(--muted);
+               cursor:pointer;padding:2px 8px;border-radius:5px">Clear</span>
+    </div>
+    <div class="log-wrap">
+      <div id="log">
+        <div class="ll"><span class="lm sys">Log empty — connect to start.</span></div>
+      </div>
+    </div>
+    <div class="send-row">
+      <input id="inp-send" placeholder="Type command (e.g. SHOW, TOL=20)..." disabled
+             onkeydown="if(event.key==='Enter') sendMsg()">
+      <button id="btn-send" disabled onclick="sendMsg()">SEND</button>
+    </div>
+  </div>
+
+  <div class="footer">IrTrace · ESP32-C5 BLE Monitor · Chrome only</div>
 </div>
 
 <script>
-// ============================================================
-// THE KEY FIX: filter by SERVICE UUID, not by name
-// This is what was preventing ESP32 from showing in scan list
-// ============================================================
 const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const TX_UUID      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // ESP32 → Phone
-const RX_UUID      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // Phone → ESP32
+const TX_UUID      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+const RX_UUID      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 
-let device    = null;
+let bleDevice = null;
 let rxChar    = null;
 let connected = false;
 const enc     = new TextEncoder();
 const dec     = new TextDecoder();
 
-// Check browser support
 if (!navigator.bluetooth) {
-  setStatus('err', 'Web Bluetooth not supported', 'Use Chrome on Android or Chrome Desktop.');
+  document.getElementById('no-ble').style.display = 'block';
   document.getElementById('btn-connect').disabled = true;
+  setStrip('err', 'Web Bluetooth not supported — use Chrome on Android or Desktop');
 }
 
 async function toggleConnect() {
@@ -194,112 +423,169 @@ async function toggleConnect() {
 }
 
 async function connect() {
-  setStatus('', 'Scanning...', 'Looking for IrTrace-BLE...');
+  setStrip('warn', 'Scanning for IrTrace-BLE...');
   try {
-    // Filter by SERVICE UUID — this reliably finds the device
-    device = await navigator.bluetooth.requestDevice({
+    // FIX: filter by SERVICE UUID (in main ad packet)
+    // NOT by name (in scan response — Chrome never reads it)
+    bleDevice = await navigator.bluetooth.requestDevice({
       filters: [{ services: [SERVICE_UUID] }]
     });
-
-    device.addEventListener('gattserverdisconnected', onDisconnected);
-    setStatus('', 'Connecting...', 'Establishing GATT connection...');
-
-    const server  = await device.gatt.connect();
+    bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+    setStrip('warn', 'Connecting...');
+    const server  = await bleDevice.gatt.connect();
     const service = await server.getPrimaryService(SERVICE_UUID);
-
-    // Subscribe to ESP32 notifications
-    const txChar = await service.getCharacteristic(TX_UUID);
+    const txChar  = await service.getCharacteristic(TX_UUID);
     await txChar.startNotifications();
     txChar.addEventListener('characteristicvaluechanged', onNotify);
-
-    // Get write characteristic
     rxChar = await service.getCharacteristic(RX_UUID);
-
     onConnected();
-
   } catch (err) {
     if (err.name === 'NotFoundError') {
-      setStatus('', 'Disconnected', 'Scan cancelled.');
+      setStrip('', 'Scan cancelled.');
     } else {
-      setStatus('err', 'Error', err.message);
-      log('err', err.message);
+      setStrip('err', 'Failed: ' + err.message);
+      addLog('err', err.message);
     }
   }
 }
 
 function disconnect() {
-  if (device && device.gatt.connected) device.gatt.disconnect();
+  if (bleDevice && bleDevice.gatt.connected) bleDevice.gatt.disconnect();
 }
 
 function onConnected() {
   connected = true;
-  document.getElementById('btn-connect').textContent = '🔴 Disconnect';
   document.getElementById('btn-connect').classList.add('conn');
-  document.getElementById('dot').className = 'dot on';
-  document.getElementById('inp-send').disabled = false;
-  document.getElementById('btn-send').disabled  = false;
-  setStatus('ok', 'Connected', 'Connected to ' + (device ? device.name : 'IrTrace-BLE'));
-  log('sys', 'Connected to ' + device.name);
+  document.getElementById('btn-label').textContent = 'Disconnect';
+  setStrip('ok', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
+  setControls(true);
+  setPill('ir-pill',  'pill pill-live', 'Live');
+  setPill('set-pill', 'pill pill-conn', 'Connected');
+  addLog('sys', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
 }
 
 function onDisconnected() {
-  connected = false;
-  rxChar    = null;
-  document.getElementById('btn-connect').textContent = '🔵 Connect to IrTrace-BLE';
+  connected = false; rxChar = null;
   document.getElementById('btn-connect').classList.remove('conn');
-  document.getElementById('dot').className = 'dot off';
-  document.getElementById('inp-send').disabled = true;
-  document.getElementById('btn-send').disabled  = true;
-  setStatus('', 'Disconnected', 'Device disconnected.');
-  log('sys', 'Disconnected');
+  document.getElementById('btn-label').textContent = 'Connect';
+  setStrip('', 'Disconnected — tap Connect to reconnect');
+  setControls(false);
+  setPill('ir-pill',  'pill pill-idle', 'Waiting');
+  setPill('set-pill', 'pill pill-idle', 'Not Connected');
+  addLog('sys', 'Disconnected');
 }
 
 function onNotify(event) {
-  const msg = dec.decode(event.target.value).trim();
-  log('rx', msg);
+  const raw = dec.decode(event.target.value).trim();
+  if (!raw) return;
+  addLog('rx', raw);
+  const ci = raw.indexOf(':');
+  if (ci === -1) return;
+  const key = raw.substring(0, ci).toUpperCase();
+  const val = raw.substring(ci + 1).trim();
+  switch (key) {
+    case 'PROTOCOL': updateIR('protocol', val); break;
+    case 'POWER':    updateIR('power',    val); break;
+    case 'MODE':     updateIR('mode',     val); break;
+    case 'TEMP':     updateIR('temp',     val); break;
+    case 'FAN':      updateIR('fan',      val); break;
+    case 'BUF':     syncNum('inp-buf',     val); break;
+    case 'TIMEOUT': syncNum('inp-timeout', val); break;
+    case 'TOL':     syncNum('inp-tol',     val); break;
+    case 'RAW':
+      document.getElementById('btn-raw-on').classList.toggle('active-on',  val==='ON');
+      document.getElementById('btn-raw-off').classList.toggle('active-off', val==='OFF');
+      break;
+    case 'SETTINGS': addLog('sys', 'Settings confirmed by ESP32'); break;
+    case 'ERROR':    addLog('err', 'ESP32: ' + val); break;
+  }
+}
+
+function updateIR(field, val) {
+  const el   = document.getElementById('val-' + field);
+  const cell = document.getElementById('cell-' + field);
+  if (!el) return;
+  const na = (!val || val === 'N/A' || val === 'n/a');
+  el.textContent = na ? 'N/A' : val;
+  el.className   = 'ir-val' + (na ? ' na' : '');
+  if (!na) {
+    if (field === 'protocol') {
+      el.classList.add('proto');
+      document.getElementById('last-ts').textContent =
+        'Last: ' + new Date().toLocaleTimeString('en-GB',{hour12:false});
+    }
+    if (field === 'power') el.classList.add(val === 'ON' ? 'on' : 'off');
+  }
+  cell.classList.remove('flash');
+  void cell.offsetWidth;
+  cell.classList.add('flash');
+  setTimeout(() => cell.classList.remove('flash'), 600);
+}
+
+function syncNum(id, val) {
+  const el = document.getElementById(id);
+  if (el && !isNaN(parseInt(val))) el.value = parseInt(val);
+}
+
+async function sendCmd(cmd) {
+  if (!connected || !rxChar) { addLog('err', 'Not connected'); return; }
+  try {
+    await rxChar.writeValue(enc.encode(cmd));
+    addLog('tx', cmd);
+  } catch(err) { addLog('err', 'Send failed: ' + err.message); }
+}
+
+async function sendSetting(prefix, inputId) {
+  const val = document.getElementById(inputId).value.trim();
+  if (val) await sendCmd(prefix + val);
 }
 
 async function sendMsg() {
   const inp = document.getElementById('inp-send');
   const msg = inp.value.trim();
-  if (!msg || !connected || !rxChar) return;
-  try {
-    await rxChar.writeValue(enc.encode(msg));
-    log('tx', msg);
-    inp.value = '';
-  } catch (err) {
-    log('err', 'Send failed: ' + err.message);
-  }
+  if (!msg) return;
+  await sendCmd(msg);
+  inp.value = '';
 }
 
-function setStatus(type, label, detail) {
-  document.getElementById('status-text').textContent  = label;
-  const d = document.getElementById('status-detail');
-  d.textContent  = detail;
-  d.className    = 'status-text ' + type;
+function setControls(on) {
+  ['btn-buf','btn-timeout','btn-tol','btn-raw-on','btn-raw-off',
+   'btn-show','inp-buf','inp-timeout','inp-tol','inp-send','btn-send']
+  .forEach(id => { const e = document.getElementById(id); if(e) e.disabled = !on; });
 }
 
-let logClear = true;
-function log(type, msg) {
+function setStrip(type, msg) {
+  const el = document.getElementById('status-strip');
+  el.className = type || '';
+  document.getElementById('strip-msg').textContent = msg;
+}
+
+function setPill(id, cls, txt) {
+  const el = document.getElementById(id);
+  el.className = cls; el.textContent = txt;
+}
+
+let logFirst = true;
+function addLog(type, msg) {
   const el = document.getElementById('log');
-  if (logClear) { el.innerHTML = ''; logClear = false; }
-  const ts  = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  if (logFirst) { el.innerHTML = ''; logFirst = false; }
+  const ts  = new Date().toLocaleTimeString('en-GB',{hour12:false});
   const row = document.createElement('div');
-  row.className = 'line';
-  row.innerHTML = `<span class="ts">${ts}</span><span class="${type}">${esc(msg)}</span>`;
+  row.className = 'll';
+  row.innerHTML = `<span class="lt">${ts}</span><span class="lm ${type}">${esc(msg)}</span>`;
   el.appendChild(row);
-  while (el.children.length > 200) el.removeChild(el.firstChild);
+  while (el.children.length > 300) el.removeChild(el.firstChild);
   el.scrollTop = el.scrollHeight;
 }
 
 function clearLog() {
   document.getElementById('log').innerHTML =
-    '<div class="line"><span class="sys">— cleared —</span></div>';
-  logClear = false;
+    '<div class="ll"><span class="lm sys">Log cleared.</span></div>';
+  logFirst = false;
 }
 
 function esc(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 </script>
 </body>
