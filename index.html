@@ -5,714 +5,300 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>IrTrace BLE</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
-
-  :root {
-    --bg:        #f4f5f7;
-    --surface:   #ffffff;
-    --border:    #e2e5eb;
-    --text:      #1a1d23;
-    --muted:     #6b7280;
-    --accent:    #1a6cf5;
-    --accent-bg: #edf2ff;
-    --green:     #16a34a;
-    --green-bg:  #dcfce7;
-    --red:       #dc2626;
-    --red-bg:    #fee2e2;
-    --orange:    #ea580c;
-    --mono:      'IBM Plex Mono', monospace;
-    --sans:      'IBM Plex Sans', sans-serif;
-    --radius:    10px;
-    --shadow:    0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
-  }
-
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    font-family: var(--sans);
-    background: var(--bg);
-    color: var(--text);
+    font-family: 'Segoe UI', sans-serif;
+    background: #f0f2f5;
     min-height: 100vh;
-    padding: 0 0 40px;
-  }
-
-  /* ---- Header ---- */
-  header {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 14px 20px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    box-shadow: var(--shadow);
-  }
-
-  .logo {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .logo-icon {
-    width: 32px; height: 32px;
-    background: var(--accent);
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-  }
-
-  .logo-icon svg { width: 18px; height: 18px; fill: #fff; }
-
-  .logo-name {
-    font-family: var(--mono);
-    font-weight: 600;
-    font-size: 1rem;
-    letter-spacing: -0.01em;
-  }
-
-  .logo-sub {
-    font-size: 0.7rem;
-    color: var(--muted);
-    font-family: var(--mono);
-  }
-
-  /* ---- Connect button ---- */
-  #btn-connect {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: 8px 16px;
-    border-radius: 8px;
-    border: none;
-    font-family: var(--sans);
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all .15s;
-    background: var(--accent);
-    color: #fff;
-  }
-
-  #btn-connect:hover { background: #1558d6; }
-  #btn-connect.connected { background: var(--red-bg); color: var(--red); }
-  #btn-connect.connected:hover { background: #fecaca; }
-  #btn-connect .dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: rgba(255,255,255,.7);
-    transition: background .15s;
-  }
-  #btn-connect.connected .dot { background: var(--red); }
-
-  /* ---- Status bar ---- */
-  #status-bar {
-    font-family: var(--mono);
-    font-size: 0.7rem;
-    padding: 6px 20px;
-    background: var(--accent-bg);
-    color: var(--accent);
-    border-bottom: 1px solid #c7d9ff;
-    transition: all .3s;
-  }
-  #status-bar.ok  { background: var(--green-bg); color: var(--green); border-color: #bbf7d0; }
-  #status-bar.err { background: var(--red-bg);   color: var(--red);   border-color: #fecaca; }
-
-  /* ---- Layout ---- */
-  .container {
-    max-width: 680px;
-    margin: 0 auto;
-    padding: 20px 16px 0;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    align-items: center;
+    padding: 20px 16px;
   }
 
-  /* ---- Section cards ---- */
+  h1 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #1a1d23;
+    margin-bottom: 4px;
+  }
+
+  .sub { font-size: 0.8rem; color: #6b7280; margin-bottom: 20px; }
+
   .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.1);
+    width: 100%;
+    max-width: 480px;
+    margin-bottom: 14px;
     overflow: hidden;
   }
 
-  .card-header {
-    padding: 11px 16px;
-    border-bottom: 1px solid var(--border);
+  .card-head {
+    padding: 12px 16px;
+    background: #f8f9fb;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #6b7280;
     display: flex;
-    align-items: center;
     justify-content: space-between;
-    background: #fafbfc;
-  }
-
-  .card-title {
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: .07em;
-    text-transform: uppercase;
-    color: var(--muted);
-    font-family: var(--mono);
-  }
-
-  .badge {
-    font-family: var(--mono);
-    font-size: 0.65rem;
-    padding: 2px 7px;
-    border-radius: 20px;
-    font-weight: 600;
-  }
-
-  .badge-waiting { background: #f1f5f9; color: var(--muted); }
-  .badge-live    { background: var(--green-bg); color: var(--green); }
-
-  /* ---- IR Data grid ---- */
-  .ir-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1px;
-    background: var(--border);
-  }
-
-  .ir-cell {
-    background: var(--surface);
-    padding: 16px 18px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    transition: background .2s;
-  }
-
-  .ir-cell.highlight { background: var(--accent-bg); }
-
-  .ir-cell.full-width {
-    grid-column: 1 / -1;
-  }
-
-  .ir-label {
-    font-family: var(--mono);
-    font-size: 0.65rem;
-    font-weight: 600;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-
-  .ir-value {
-    font-family: var(--mono);
-    font-size: 1.2rem;
-    font-weight: 600;
-    color: var(--text);
-    min-height: 1.6rem;
-    transition: color .2s;
-  }
-
-  .ir-value.na    { color: #c5cad4; font-size: 1rem; }
-  .ir-value.on    { color: var(--green); }
-  .ir-value.off   { color: var(--red); }
-  .ir-value.proto { font-size: 1rem; color: var(--accent); }
-
-  /* ---- Settings grid ---- */
-  .settings-body {
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .setting-row {
-    display: flex;
     align-items: center;
-    gap: 10px;
   }
 
-  .setting-label {
-    font-family: var(--mono);
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: var(--muted);
-    width: 80px;
-    flex-shrink: 0;
+  /* Status dot */
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #d1d5db;
+    display: inline-block;
+    margin-right: 6px;
   }
+  .dot.on  { background: #16a34a; box-shadow: 0 0 0 3px #dcfce7; }
+  .dot.off { background: #d1d5db; }
 
-  .setting-row input[type=number] {
-    flex: 1;
-    padding: 7px 10px;
-    border: 1px solid var(--border);
-    border-radius: 7px;
-    font-family: var(--mono);
-    font-size: 0.85rem;
-    color: var(--text);
-    background: var(--bg);
-    outline: none;
-    transition: border-color .15s;
-    -moz-appearance: textfield;
-  }
-  .setting-row input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
-  .setting-row input[type=number]:focus { border-color: var(--accent); background: #fff; }
-
-  .btn-set {
-    padding: 7px 14px;
+  /* Connect button */
+  #btn-connect {
+    width: 100%;
+    max-width: 480px;
+    padding: 14px;
     border: none;
-    border-radius: 7px;
-    font-family: var(--mono);
-    font-size: 0.75rem;
-    font-weight: 600;
-    background: var(--accent);
-    color: #fff;
-    cursor: pointer;
-    transition: background .15s, opacity .15s;
-    white-space: nowrap;
-  }
-  .btn-set:hover  { background: #1558d6; }
-  .btn-set:disabled { opacity: .4; cursor: not-allowed; }
-
-  .raw-toggle {
-    display: flex;
-    gap: 6px;
-  }
-
-  .btn-raw {
-    flex: 1;
-    padding: 7px;
-    border: 1.5px solid var(--border);
-    border-radius: 7px;
-    font-family: var(--mono);
-    font-size: 0.75rem;
-    font-weight: 600;
-    background: var(--bg);
-    color: var(--muted);
+    border-radius: 12px;
+    font-size: 1rem;
+    font-weight: 700;
     cursor: pointer;
     transition: all .15s;
+    margin-bottom: 14px;
+    background: #1a6cf5;
+    color: #fff;
   }
-  .btn-raw.active-on  { border-color: var(--green); background: var(--green-bg); color: var(--green); }
-  .btn-raw.active-off { border-color: var(--red);   background: var(--red-bg);   color: var(--red);   }
-  .btn-raw:disabled   { opacity: .4; cursor: not-allowed; }
+  #btn-connect:hover  { background: #1558d6; }
+  #btn-connect.conn   { background: #fee2e2; color: #dc2626; }
 
-  /* ---- Log ---- */
-  .log-body {
-    padding: 12px 16px;
-  }
-
+  /* Log */
   #log {
-    font-family: var(--mono);
-    font-size: 0.72rem;
-    line-height: 1.7;
-    height: 180px;
+    padding: 12px 16px;
+    height: 240px;
     overflow-y: auto;
-    color: var(--text);
+    font-family: 'Courier New', monospace;
+    font-size: 0.78rem;
+    line-height: 1.7;
   }
 
-  .log-line { display: flex; gap: 8px; }
-  .log-ts   { color: #9ca3af; flex-shrink: 0; }
-  .log-msg  { word-break: break-all; }
-  .log-msg.rx   { color: var(--accent); }
-  .log-msg.tx   { color: var(--green); }
-  .log-msg.err  { color: var(--red); }
-  .log-msg.sys  { color: var(--muted); font-style: italic; }
+  .line { display: flex; gap: 8px; }
+  .ts   { color: #9ca3af; flex-shrink: 0; }
+  .rx   { color: #1a6cf5; }
+  .tx   { color: #16a34a; }
+  .sys  { color: #9ca3af; font-style: italic; }
+  .err  { color: #dc2626; }
 
-  .log-empty {
-    color: var(--muted);
-    font-style: italic;
-    font-size: 0.72rem;
-    font-family: var(--mono);
-    padding: 4px 0;
+  /* Send area */
+  .send-row {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid #e5e7eb;
   }
 
-  /* ---- No-BLE warning ---- */
-  #no-ble {
-    display: none;
-    background: var(--red-bg);
-    border: 1px solid #fecaca;
-    border-radius: var(--radius);
-    padding: 16px;
-    font-size: 0.85rem;
-    color: var(--red);
-    line-height: 1.5;
+  #inp-send {
+    flex: 1;
+    padding: 9px 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color .15s;
   }
+  #inp-send:focus { border-color: #1a6cf5; }
 
-  /* ---- Scrollbar ---- */
-  #log::-webkit-scrollbar { width: 4px; }
-  #log::-webkit-scrollbar-track { background: transparent; }
-  #log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-  /* ---- Last-seen timestamp ---- */
-  .card-ts {
-    font-family: var(--mono);
-    font-size: 0.63rem;
-    color: #b0b8c8;
+  #btn-send {
+    padding: 9px 18px;
+    background: #1a6cf5;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-weight: 700;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background .15s;
   }
+  #btn-send:hover    { background: #1558d6; }
+  #btn-send:disabled { background: #d1d5db; cursor: not-allowed; }
 
-  /* ---- Fade-in animation on value update ---- */
-  @keyframes flash {
-    0%   { background: #dbeafe; }
-    100% { background: var(--surface); }
+  .status-text {
+    font-size: 0.78rem;
+    color: #6b7280;
+    padding: 0 16px 12px;
   }
-  .ir-cell.flash { animation: flash .5s ease-out; }
+  .status-text.ok  { color: #16a34a; }
+  .status-text.err { color: #dc2626; }
 </style>
 </head>
 <body>
 
-<header>
-  <div class="logo">
-    <div class="logo-icon">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/>
-      </svg>
-    </div>
-    <div>
-      <div class="logo-name">IrTrace</div>
-      <div class="logo-sub">BLE Monitor</div>
-    </div>
+<h1>IrTrace BLE</h1>
+<p class="sub">ESP32-C5 · Nordic UART Service</p>
+
+<button id="btn-connect" onclick="toggleConnect()">
+  🔵 Connect to IrTrace-BLE
+</button>
+
+<div class="card">
+  <div class="card-head">
+    <span><span class="dot off" id="dot"></span>Status</span>
+    <span id="status-text">Disconnected</span>
   </div>
-  <button id="btn-connect">
-    <span class="dot"></span>
-    <span id="btn-label">Connect</span>
-  </button>
-</header>
+  <p class="status-text" id="status-detail">Press Connect and select IrTrace-BLE from the list.</p>
+</div>
 
-<div id="status-bar">● Disconnected — open Chrome on Android and tap Connect</div>
-
-<div class="container">
-
-  <!-- No BLE support warning -->
-  <div id="no-ble">
-    ⚠️ Web Bluetooth is not supported in this browser.<br>
-    Please open this page in <strong>Chrome on Android</strong> or <strong>Chrome on Desktop</strong>.
+<div class="card">
+  <div class="card-head">
+    <span>Message Log</span>
+    <span onclick="clearLog()" style="cursor:pointer;font-size:0.7rem;color:#9ca3af">Clear</span>
   </div>
-
-  <!-- IR Decoded Data -->
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">IR Decoded Signal</span>
-      <div style="display:flex;align-items:center;gap:10px">
-        <span class="card-ts" id="last-seen"></span>
-        <span class="badge badge-waiting" id="ir-badge">Waiting</span>
-      </div>
-    </div>
-    <div class="ir-grid">
-      <div class="ir-cell full-width" id="cell-protocol">
-        <span class="ir-label">Protocol</span>
-        <span class="ir-value na" id="val-protocol">—</span>
-      </div>
-      <div class="ir-cell" id="cell-power">
-        <span class="ir-label">Power</span>
-        <span class="ir-value na" id="val-power">—</span>
-      </div>
-      <div class="ir-cell" id="cell-mode">
-        <span class="ir-label">Mode</span>
-        <span class="ir-value na" id="val-mode">—</span>
-      </div>
-      <div class="ir-cell" id="cell-temp">
-        <span class="ir-label">Temperature</span>
-        <span class="ir-value na" id="val-temp">—</span>
-      </div>
-      <div class="ir-cell" id="cell-fan">
-        <span class="ir-label">Fan</span>
-        <span class="ir-value na" id="val-fan">—</span>
-      </div>
-    </div>
+  <div id="log"><div class="line"><span class="sys">— log empty —</span></div></div>
+  <div class="send-row">
+    <input id="inp-send" placeholder="Type a message..." disabled
+           onkeydown="if(event.key==='Enter') sendMsg()">
+    <button id="btn-send" disabled onclick="sendMsg()">Send</button>
   </div>
-
-  <!-- Receiver Settings -->
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">Receiver Settings</span>
-      <span class="badge badge-waiting" id="settings-badge">Not Connected</span>
-    </div>
-    <div class="settings-body">
-      <div class="setting-row">
-        <span class="setting-label">Buffer</span>
-        <input type="number" id="inp-buf" value="4096" min="256" max="16384" placeholder="256–16384">
-        <button class="btn-set" id="btn-buf" disabled onclick="sendSetting('BUF=', 'inp-buf')">Set</button>
-      </div>
-      <div class="setting-row">
-        <span class="setting-label">Timeout</span>
-        <input type="number" id="inp-timeout" value="15" min="1" max="250" placeholder="1–250 ms">
-        <button class="btn-set" id="btn-timeout" disabled onclick="sendSetting('TIMEOUT=', 'inp-timeout')">Set</button>
-      </div>
-      <div class="setting-row">
-        <span class="setting-label">Tolerance</span>
-        <input type="number" id="inp-tol" value="25" min="1" max="49" placeholder="1–49 %">
-        <button class="btn-set" id="btn-tol" disabled onclick="sendSetting('TOL=', 'inp-tol')">Set</button>
-      </div>
-      <div class="setting-row">
-        <span class="setting-label">Raw Out</span>
-        <div class="raw-toggle" style="flex:1">
-          <button class="btn-raw" id="btn-raw-on"  disabled onclick="sendCmd('RAW=ON')">ON</button>
-          <button class="btn-raw" id="btn-raw-off" disabled onclick="sendCmd('RAW=OFF')">OFF</button>
-        </div>
-        <button class="btn-set" id="btn-show" disabled onclick="sendCmd('SHOW')" style="background:#6b7280">SHOW</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Message Log -->
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">Message Log</span>
-      <button onclick="clearLog()" style="font-family:var(--mono);font-size:0.65rem;background:none;border:none;color:var(--muted);cursor:pointer;padding:2px 6px;border-radius:4px;">Clear</button>
-    </div>
-    <div class="log-body">
-      <div id="log">
-        <div class="log-empty">Log is empty — connect to start.</div>
-      </div>
-    </div>
-  </div>
-
 </div>
 
 <script>
 // ============================================================
-// BLE UUIDs — must match ESP32 sketch exactly
+// THE KEY FIX: filter by SERVICE UUID, not by name
+// This is what was preventing ESP32 from showing in scan list
 // ============================================================
 const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const TX_UUID      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // ESP32 → Phone (NOTIFY)
-const RX_UUID      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // Phone → ESP32 (WRITE)
+const TX_UUID      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // ESP32 → Phone
+const RX_UUID      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // Phone → ESP32
 
-// ============================================================
-// State
-// ============================================================
-let bleDevice    = null;
-let bleServer    = null;
-let rxChar       = null;
-let connected    = false;
-const encoder    = new TextEncoder();
-const decoder    = new TextDecoder();
+let device    = null;
+let rxChar    = null;
+let connected = false;
+const enc     = new TextEncoder();
+const dec     = new TextDecoder();
 
-// ============================================================
-// Check Web Bluetooth support
-// ============================================================
+// Check browser support
 if (!navigator.bluetooth) {
-  document.getElementById('no-ble').style.display = 'block';
+  setStatus('err', 'Web Bluetooth not supported', 'Use Chrome on Android or Chrome Desktop.');
   document.getElementById('btn-connect').disabled = true;
 }
 
-// ============================================================
-// Connect / Disconnect
-// ============================================================
-document.getElementById('btn-connect').addEventListener('click', async () => {
-  if (connected) {
-    disconnect();
-  } else {
-    await connect();
-  }
-});
+async function toggleConnect() {
+  connected ? disconnect() : await connect();
+}
 
 async function connect() {
-  setStatus('Scanning for IrTrace-BLE...', '');
+  setStatus('', 'Scanning...', 'Looking for IrTrace-BLE...');
   try {
-    bleDevice = await navigator.bluetooth.requestDevice({
-      filters: [{ name: 'IrTrace-BLE' }],
-      optionalServices: [SERVICE_UUID]
+    // Filter by SERVICE UUID — this reliably finds the device
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SERVICE_UUID] }]
     });
 
-    bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
-    setStatus('Connecting...', '');
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+    setStatus('', 'Connecting...', 'Establishing GATT connection...');
 
-    bleServer = await bleDevice.gatt.connect();
-    const service = await bleServer.getPrimaryService(SERVICE_UUID);
+    const server  = await device.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
 
-    // Subscribe to notifications from ESP32 (TX characteristic)
+    // Subscribe to ESP32 notifications
     const txChar = await service.getCharacteristic(TX_UUID);
     await txChar.startNotifications();
-    txChar.addEventListener('characteristicvaluechanged', onNotification);
+    txChar.addEventListener('characteristicvaluechanged', onNotify);
 
-    // Get RX characteristic for sending commands
+    // Get write characteristic
     rxChar = await service.getCharacteristic(RX_UUID);
 
     onConnected();
-    log('sys', 'Connected to IrTrace-BLE');
 
   } catch (err) {
-    if (err.name !== 'NotFoundError') {
-      setStatus('Connection failed: ' + err.message, 'err');
-      log('err', 'Error: ' + err.message);
+    if (err.name === 'NotFoundError') {
+      setStatus('', 'Disconnected', 'Scan cancelled.');
     } else {
-      setStatus('Scan cancelled.', '');
+      setStatus('err', 'Error', err.message);
+      log('err', err.message);
     }
   }
 }
 
 function disconnect() {
-  if (bleDevice && bleDevice.gatt.connected) {
-    bleDevice.gatt.disconnect();
-  }
+  if (device && device.gatt.connected) device.gatt.disconnect();
 }
 
 function onConnected() {
   connected = true;
-  const btn = document.getElementById('btn-connect');
-  btn.classList.add('connected');
-  document.getElementById('btn-label').textContent = 'Disconnect';
-  setStatus('● Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'), 'ok');
-  setSettingsEnabled(true);
-  document.getElementById('ir-badge').className = 'badge badge-live';
-  document.getElementById('ir-badge').textContent = 'Live';
-  document.getElementById('settings-badge').className = 'badge badge-live';
-  document.getElementById('settings-badge').textContent = 'Connected';
+  document.getElementById('btn-connect').textContent = '🔴 Disconnect';
+  document.getElementById('btn-connect').classList.add('conn');
+  document.getElementById('dot').className = 'dot on';
+  document.getElementById('inp-send').disabled = false;
+  document.getElementById('btn-send').disabled  = false;
+  setStatus('ok', 'Connected', 'Connected to ' + (device ? device.name : 'IrTrace-BLE'));
+  log('sys', 'Connected to ' + device.name);
 }
 
 function onDisconnected() {
   connected = false;
-  rxChar = null;
-  const btn = document.getElementById('btn-connect');
-  btn.classList.remove('connected');
-  document.getElementById('btn-label').textContent = 'Connect';
-  setStatus('● Disconnected — tap Connect to reconnect', '');
-  setSettingsEnabled(false);
-  document.getElementById('ir-badge').className = 'badge badge-waiting';
-  document.getElementById('ir-badge').textContent = 'Waiting';
-  document.getElementById('settings-badge').className = 'badge badge-waiting';
-  document.getElementById('settings-badge').textContent = 'Not Connected';
+  rxChar    = null;
+  document.getElementById('btn-connect').textContent = '🔵 Connect to IrTrace-BLE';
+  document.getElementById('btn-connect').classList.remove('conn');
+  document.getElementById('dot').className = 'dot off';
+  document.getElementById('inp-send').disabled = true;
+  document.getElementById('btn-send').disabled  = true;
+  setStatus('', 'Disconnected', 'Device disconnected.');
   log('sys', 'Disconnected');
 }
 
-// ============================================================
-// Handle incoming BLE notification from ESP32
-// ============================================================
-function onNotification(event) {
-  const raw = decoder.decode(event.target.value).trim();
-  if (!raw) return;
-
-  log('rx', raw);
-
-  const colon = raw.indexOf(':');
-  if (colon === -1) return;
-
-  const key = raw.substring(0, colon).toUpperCase();
-  const val = raw.substring(colon + 1).trim();
-
-  switch (key) {
-    case 'PROTOCOL': updateIrField('protocol', val); break;
-    case 'POWER':    updateIrField('power',    val); break;
-    case 'MODE':     updateIrField('mode',     val); break;
-    case 'TEMP':     updateIrField('temp',     val); break;
-    case 'FAN':      updateIrField('fan',      val); break;
-    case 'BUF':      syncInput('inp-buf',     val);  break;
-    case 'TIMEOUT':  syncInput('inp-timeout', val);  break;
-    case 'TOL':      syncInput('inp-tol',     val);  break;
-    case 'RAW':
-      document.getElementById('btn-raw-on').classList.toggle('active-on',  val === 'ON');
-      document.getElementById('btn-raw-off').classList.toggle('active-off', val === 'OFF');
-      break;
-    case 'SETTINGS': log('sys', 'Settings confirmed by ESP32'); break;
-    case 'ERROR':    log('err', 'ESP32 error: ' + val); break;
-    default:         break;
-  }
+function onNotify(event) {
+  const msg = dec.decode(event.target.value).trim();
+  log('rx', msg);
 }
 
-// ============================================================
-// Update IR data field
-// ============================================================
-function updateIrField(field, val) {
-  const el   = document.getElementById('val-' + field);
-  const cell = document.getElementById('cell-' + field);
-  if (!el) return;
-
-  const isNA = (val === 'N/A' || val === '' || val === 'n/a');
-
-  el.textContent = isNA ? 'N/A' : val;
-  el.className   = 'ir-value';
-
-  if (isNA) {
-    el.classList.add('na');
-  } else if (field === 'protocol') {
-    el.classList.add('proto');
-    const now = new Date();
-    document.getElementById('last-seen').textContent =
-      'Last: ' + now.toLocaleTimeString();
-  } else if (field === 'power') {
-    el.classList.add(val === 'ON' ? 'on' : 'off');
-  }
-
-  // Flash animation
-  cell.classList.remove('flash');
-  void cell.offsetWidth; // reflow
-  cell.classList.add('flash');
-  setTimeout(() => cell.classList.remove('flash'), 600);
-}
-
-// ============================================================
-// Sync input field when ESP32 echoes a setting
-// ============================================================
-function syncInput(id, val) {
-  const el = document.getElementById(id);
-  if (el && !isNaN(val)) el.value = val;
-}
-
-// ============================================================
-// Send a command string to ESP32
-// ============================================================
-async function sendCmd(cmd) {
-  if (!connected || !rxChar) {
-    log('err', 'Not connected');
-    return;
-  }
+async function sendMsg() {
+  const inp = document.getElementById('inp-send');
+  const msg = inp.value.trim();
+  if (!msg || !connected || !rxChar) return;
   try {
-    await rxChar.writeValue(encoder.encode(cmd));
-    log('tx', cmd);
+    await rxChar.writeValue(enc.encode(msg));
+    log('tx', msg);
+    inp.value = '';
   } catch (err) {
     log('err', 'Send failed: ' + err.message);
   }
 }
 
-// ============================================================
-// Send a setting command using an input field value
-// ============================================================
-async function sendSetting(prefix, inputId) {
-  const val = document.getElementById(inputId).value.trim();
-  if (!val) return;
-  await sendCmd(prefix + val);
+function setStatus(type, label, detail) {
+  document.getElementById('status-text').textContent  = label;
+  const d = document.getElementById('status-detail');
+  d.textContent  = detail;
+  d.className    = 'status-text ' + type;
 }
 
-// ============================================================
-// Enable / disable settings controls
-// ============================================================
-function setSettingsEnabled(on) {
-  ['btn-buf','btn-timeout','btn-tol','btn-raw-on','btn-raw-off','btn-show']
-    .forEach(id => document.getElementById(id).disabled = !on);
-}
-
-// ============================================================
-// Status bar
-// ============================================================
-function setStatus(msg, type) {
-  const bar = document.getElementById('status-bar');
-  bar.textContent = msg;
-  bar.className = type || '';
-}
-
-// ============================================================
-// Log
-// ============================================================
-let logEmpty = true;
-
+let logClear = true;
 function log(type, msg) {
   const el = document.getElementById('log');
-  if (logEmpty) { el.innerHTML = ''; logEmpty = false; }
-
+  if (logClear) { el.innerHTML = ''; logClear = false; }
   const ts  = new Date().toLocaleTimeString('en-GB', { hour12: false });
   const row = document.createElement('div');
-  row.className = 'log-line';
-  row.innerHTML =
-    `<span class="log-ts">${ts}</span>` +
-    `<span class="log-msg ${type}">${escHtml(msg)}</span>`;
+  row.className = 'line';
+  row.innerHTML = `<span class="ts">${ts}</span><span class="${type}">${esc(msg)}</span>`;
   el.appendChild(row);
-
-  // Keep log at max 200 lines
   while (el.children.length > 200) el.removeChild(el.firstChild);
   el.scrollTop = el.scrollHeight;
 }
 
 function clearLog() {
-  const el = document.getElementById('log');
-  el.innerHTML = '<div class="log-empty">Log cleared.</div>';
-  logEmpty = false;
+  document.getElementById('log').innerHTML =
+    '<div class="line"><span class="sys">— cleared —</span></div>';
+  logClear = false;
 }
 
-function escHtml(s) {
+function esc(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 </script>
