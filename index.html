@@ -93,7 +93,6 @@
   .pill { font-family: var(--mono); font-size: .62rem; font-weight: 700; padding: 3px 9px; border-radius: 20px; }
   .pill-idle { background: #f1f3f7; color: var(--muted); }
   .pill-live { background: var(--green-lt); color: var(--green); }
-  .pill-ok   { background: var(--accent-lt); color: var(--accent); }
 
   /* IR RX GRID */
   .ir-grid { display: grid; grid-template-columns: 1fr 1fr; }
@@ -114,105 +113,12 @@
   @keyframes flash { 0%{background:#dbeafe} 100%{background:var(--surface)} }
   .ir-cell.flash { animation: flash .5s ease-out forwards; }
 
-  /* ── AC CONTROL CARD ── */
+  /* DEBUG CARD */
   .ctrl-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .ctrl-row  { display: flex; align-items: center; gap: 10px; }
+  .ctrl-lbl  { font-family: var(--mono); font-size: .68rem; font-weight: 700; color: var(--muted); width: 72px; flex-shrink: 0; }
 
-  /* Variant selector */
-  .ctrl-row { display: flex; align-items: center; gap: 10px; }
-  .ctrl-lbl { font-family: var(--mono); font-size: .68rem; font-weight: 700; color: var(--muted); width: 72px; flex-shrink: 0; }
-
-  select#sel-variant {
-    flex: 1; padding: 9px 12px;
-    border: 1.5px solid var(--border); border-radius: 8px;
-    font-family: var(--mono); font-size: .78rem; color: var(--text);
-    background: var(--bg); outline: none; cursor: pointer;
-    transition: border-color .15s;
-  }
-  select#sel-variant:focus    { border-color: var(--accent); background: #fff; }
-  select#sel-variant:disabled { opacity: .4; cursor: not-allowed; }
-
-  /* Temperature slider */
-  .temp-row { display: flex; align-items: center; gap: 10px; }
-  .temp-display {
-    font-family: var(--mono); font-size: 1.5rem; font-weight: 700;
-    color: var(--accent); width: 60px; text-align: center; flex-shrink: 0;
-  }
-  .temp-display span { font-size: .75rem; color: var(--muted); }
-  input[type=range] {
-    flex: 1; height: 6px; cursor: pointer; accent-color: var(--accent);
-  }
-  input[type=range]:disabled { opacity: .4; cursor: not-allowed; }
-
-  .temp-btns { display: flex; gap: 6px; }
-  .btn-temp {
-    width: 34px; height: 34px; border: 1.5px solid var(--border); border-radius: 8px;
-    background: var(--bg); font-size: 1.1rem; font-weight: 700; color: var(--text);
-    cursor: pointer; transition: all .12s; display: flex; align-items: center; justify-content: center;
-  }
-  .btn-temp:hover    { border-color: var(--accent); background: var(--accent-lt); color: var(--accent); }
-  .btn-temp:disabled { opacity: .4; cursor: not-allowed; }
-
-  /* Repeat */
-  .repeat-row { display: flex; align-items: center; gap: 10px; }
-  input#inp-repeat {
-    width: 64px; padding: 8px 10px;
-    border: 1.5px solid var(--border); border-radius: 8px;
-    font-family: var(--mono); font-size: .85rem; color: var(--text);
-    background: var(--bg); outline: none; text-align: center;
-    -moz-appearance: textfield; transition: border-color .15s;
-  }
-  input#inp-repeat::-webkit-inner-spin-button { -webkit-appearance: none; }
-  input#inp-repeat:focus    { border-color: var(--accent); background: #fff; }
-  input#inp-repeat:disabled { opacity: .4; cursor: not-allowed; }
-
-  /* Power buttons */
-  .power-row { display: flex; gap: 10px; }
-  .btn-power {
-    flex: 1; padding: 13px;
-    border: none; border-radius: 10px;
-    font-family: var(--mono); font-size: .85rem; font-weight: 700;
-    cursor: pointer; transition: all .15s; letter-spacing: .04em;
-  }
-  .btn-on  { background: var(--green-lt); color: var(--green); border: 1.5px solid #86efac; }
-  .btn-on:hover  { background: #bbf7d0; }
-  .btn-off { background: var(--red-lt);  color: var(--red);   border: 1.5px solid #fca5a5; }
-  .btn-off:hover { background: #fecaca; }
-  .btn-power:disabled { opacity: .4; cursor: not-allowed; }
-
-  /* Set temp button */
-  .btn-set-temp {
-    padding: 10px; border: none; border-radius: 9px;
-    font-family: var(--mono); font-size: .78rem; font-weight: 700;
-    background: var(--accent); color: #fff; cursor: pointer; transition: background .15s;
-    width: 100%; letter-spacing: .03em;
-  }
-  .btn-set-temp:hover    { background: #003fa3; }
-  .btn-set-temp:disabled { background: #d1d5db; cursor: not-allowed; }
-
-  /* Set repeat button */
-  .btn-set-rpt {
-    padding: 8px 14px; border: none; border-radius: 8px;
-    font-family: var(--mono); font-size: .72rem; font-weight: 700;
-    background: var(--accent); color: #fff; cursor: pointer; transition: background .15s;
-  }
-  .btn-set-rpt:hover    { background: #003fa3; }
-  .btn-set-rpt:disabled { opacity: .4; cursor: not-allowed; }
-
-  /* TX status bar */
-  .tx-status {
-    font-family: var(--mono); font-size: .72rem; font-weight: 600;
-    padding: 9px 14px; border-radius: 8px;
-    background: #f1f3f7; color: var(--muted);
-    text-align: center; transition: all .3s;
-  }
-  .tx-status.sending { background: var(--orange-lt); color: var(--orange); }
-  .tx-status.ok      { background: var(--green-lt);  color: var(--green); }
-  .tx-status.err     { background: var(--red-lt);    color: var(--red); }
-
-  /* Divider */
-  .divider { height: 1px; background: var(--border); }
-
-  /* RAW toggle row */
+  /* RAW toggle */
   .raw-pair { display: flex; gap: 6px; flex: 1; }
   .btn-tog {
     flex: 1; padding: 8px;
@@ -236,7 +142,6 @@
   .lm.tx  { color: var(--green); }
   .lm.err { color: var(--red); }
   .lm.sys { color: var(--muted); font-style: italic; }
-  .lm.txok{ color: var(--green); font-weight: 600; }
 
   /* SEND ROW */
   .send-row { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); background: var(--surface2); }
@@ -259,7 +164,7 @@
     </div>
     <div>
       <div class="brand-name">IrTrace</div>
-      <div class="brand-sub">ESP32-C5 · RX + TX · BLE</div>
+      <div class="brand-sub">ESP32-C5 · RX · BLE</div>
     </div>
   </div>
   <button id="btn-connect" onclick="toggleConnect()">
@@ -308,153 +213,12 @@
     </div>
   </div>
 
-  <!-- ── AC CONTROL (TX) ── -->
+  <!-- ── DEBUG ── -->
   <div class="card">
     <div class="card-head">
-      <span class="card-label">AC Control · IR Transmit</span>
-      <span class="pill pill-idle" id="tx-pill">Not Connected</span>
+      <span class="card-label">Debug</span>
     </div>
     <div class="ctrl-body">
-
-      <!-- Variant -->
-      <div class="ctrl-row">
-        <span class="ctrl-lbl">Brand</span>
-        <select id="sel-variant" disabled onchange="sendVariant()">
-          <option value="0">0 — Mitsubishi STD 144-bit</option>
-          <option value="1" selected>1 — Mitsubishi 112-bit ★ default</option>
-          <option value="2">2 — Mitsubishi 136-bit</option>
-          <option value="3">3 — Mitsubishi Heavy 152-bit</option>
-          <option value="4">4 — Mitsubishi Heavy 88-bit</option>
-          <option value="5">5 — Daikin STD 280-bit</option>
-          <option value="6">6 — Daikin2 312-bit</option>
-          <option value="7">7 — Daikin64 64-bit</option>
-          <option value="8">8 — Daikin128 128-bit</option>
-          <option value="9">9 — Daikin152 152-bit</option>
-          <option value="10">10 — Daikin160 160-bit</option>
-          <option value="11">11 — Daikin176 176-bit</option>
-          <option value="12">12 — Daikin200 200-bit [STUB]</option>
-          <option value="13">13 — Daikin216 216-bit</option>
-          <option value="14">14 — Daikin312 312-bit</option>
-          <option value="15">15 — Fujitsu 56-128-bit</option>
-          <option value="16">16 — Panasonic 216-bit</option>
-          <option value="17">17 — Panasonic32 32-bit</option>
-          <option value="18">18 — Samsung 112/168-bit</option>
-          <option value="19">19 — LG 28-32-bit</option>
-          <option value="20">20 — Hitachi STD 224-bit</option>
-          <option value="21">21 — Hitachi AC1 104-bit</option>
-          <option value="22">22 — Hitachi AC2 [STUB]</option>
-          <option value="23">23 — Hitachi AC3 [STUB]</option>
-          <option value="24">24 — Hitachi AC264 264-bit</option>
-          <option value="25">25 — Hitachi AC296 296-bit</option>
-          <option value="26">26 — Hitachi AC344 344-bit</option>
-          <option value="27">27 — Hitachi AC424 424-bit</option>
-          <option value="28">28 — Toshiba 72-bit+</option>
-          <option value="29">29 — Haier STD 72-bit</option>
-          <option value="30">30 — Haier YRW02 112-bit</option>
-          <option value="31">31 — Haier AC160 160-bit</option>
-          <option value="32">32 — Haier AC176 176-bit</option>
-          <option value="33">33 — Kelvinator 128-bit</option>
-          <option value="34">34 — Gree 64-bit</option>
-          <option value="35">35 — Midea 48-bit</option>
-          <option value="36">36 — Midea24 24-bit</option>
-          <option value="37">37 — Coolix 24-bit</option>
-          <option value="38">38 — Coolix48 48-bit</option>
-          <option value="39">39 — Carrier32 [STUB]</option>
-          <option value="40">40 — Carrier40 [STUB]</option>
-          <option value="41">41 — Carrier64 64-bit</option>
-          <option value="42">42 — Carrier84 [STUB]</option>
-          <option value="43">43 — Carrier128 [STUB]</option>
-          <option value="44">44 — Sharp 104-bit</option>
-          <option value="45">45 — Whirlpool 168-bit</option>
-          <option value="46">46 — Electra/AUX 104-bit</option>
-          <option value="47">47 — Vestel 56-bit</option>
-          <option value="48">48 — TCL 112-bit</option>
-          <option value="49">49 — TCL 96-bit</option>
-          <option value="50">50 — Teco 35-bit</option>
-          <option value="51">51 — Goodweather 48-bit</option>
-          <option value="52">52 — Neoclima 96-bit</option>
-          <option value="53">53 — Amcor 64-bit</option>
-          <option value="54">54 — Airwell 34-bit</option>
-          <option value="55">55 — Delonghi 64-bit</option>
-          <option value="56">56 — Sanyo STD 72-bit</option>
-          <option value="57">57 — Sanyo88 88-bit</option>
-          <option value="58">58 — Sanyo152 [STUB]</option>
-          <option value="59">59 — Voltas 120-bit</option>
-          <option value="60">60 — Mirage 120-bit</option>
-          <option value="61">61 — Corona 168-bit</option>
-          <option value="62">62 — Airton 56-bit</option>
-          <option value="63">63 — EcoClim 56-bit</option>
-          <option value="64">64 — Kelon 48-bit</option>
-          <option value="65">65 — Kelon168 168-bit</option>
-          <option value="66">66 — Rhoss 96-bit</option>
-          <option value="67">67 — Technibel 56-bit</option>
-          <option value="68">68 — Transcold 136-bit</option>
-          <option value="69">69 — Trotec STD 56-bit</option>
-          <option value="70">70 — Trotec3550 120-bit</option>
-          <option value="71">71 — Truma variable</option>
-          <option value="72">72 — Bosch144 144-bit</option>
-          <option value="73">73 — Argo WREM2 96-bit</option>
-          <option value="74">74 — Argo WREM3 variable</option>
-          <option value="75">75 — Eurom 96-bit</option>
-          <option value="76">76 — York 88-bit</option>
-          <option value="81">81 — Godrej M1 → Coolix</option>
-          <option value="82">82 — Lloyd M1 → Coolix</option>
-          <option value="83">83 — Blue Star M1 → Coolix</option>
-          <option value="84">84 — Videocon M1 → TCL</option>
-          <option value="85">85 — Onida M1 → LG</option>
-          <option value="86">86 — Cruise M1 → Daikin</option>
-          <option value="87">87 — Sansui M1 → Coolix</option>
-          <option value="88">88 — Hyundai M1 → LG</option>
-          <option value="89">89 — IFB M1 → Panasonic</option>
-          <option value="90">90 — Philips M1 → Daikin</option>
-          <option value="91">91 — Hitech → Sharp</option>
-          <option value="92">92 — Suzuki → Coolix</option>
-        </select>
-      </div>
-
-      <!-- Temperature -->
-      <div>
-        <div class="ctrl-row" style="margin-bottom:8px">
-          <span class="ctrl-lbl">Temp</span>
-          <div class="temp-row" style="flex:1">
-            <button class="btn-temp" id="btn-tminus" disabled onclick="adjustTemp(-1)">−</button>
-            <input type="range" id="slider-temp" min="16" max="30" value="24"
-                   disabled oninput="onSlider(this.value)">
-            <button class="btn-temp" id="btn-tplus"  disabled onclick="adjustTemp(+1)">+</button>
-          </div>
-          <div class="temp-display" id="temp-display">24<span>°C</span></div>
-        </div>
-        <button class="btn-set-temp" id="btn-settemp" disabled onclick="sendSetTemp()">
-          SET TEMPERATURE
-        </button>
-      </div>
-
-      <!-- Repeat count -->
-      <div class="repeat-row">
-        <span class="ctrl-lbl">Repeat</span>
-        <input type="number" id="inp-repeat" value="3" min="1" max="10" disabled>
-        <button class="btn-set-rpt" id="btn-setrpt" disabled onclick="sendRepeat()">SET</button>
-        <span style="font-family:var(--mono);font-size:.65rem;color:var(--muted);margin-left:4px">×  IR sends</span>
-      </div>
-
-      <div class="divider"></div>
-
-      <!-- Power buttons -->
-      <div class="power-row">
-        <button class="btn-power btn-on"  id="btn-on"  disabled onclick="sendPower('on')">
-          ⚡ POWER ON
-        </button>
-        <button class="btn-power btn-off" id="btn-off" disabled onclick="sendPower('off')">
-          ⏹ POWER OFF
-        </button>
-      </div>
-
-      <!-- TX Status -->
-      <div class="tx-status" id="tx-status">— Ready —</div>
-
-      <div class="divider"></div>
-
-      <!-- RAW toggle -->
       <div class="ctrl-row">
         <span class="ctrl-lbl">Raw Out</span>
         <div class="raw-pair">
@@ -462,7 +226,6 @@
           <button class="btn-tog" id="btn-raw-off" disabled onclick="sendCmd('RAW=OFF')">OFF</button>
         </div>
       </div>
-
     </div>
   </div>
 
@@ -479,13 +242,13 @@
       </div>
     </div>
     <div class="send-row">
-      <input id="inp-send" placeholder="Manual command (e.g. v 5, on 24, off, r 3)..." disabled
+      <input id="inp-send" placeholder="Manual command (e.g. RAW=ON, RAW=OFF, status)..." disabled
              onkeydown="if(event.key==='Enter') sendManual()">
       <button id="btn-send" disabled onclick="sendManual()">SEND</button>
     </div>
   </div>
 
-  <div class="footer">IrTrace · ESP32-C5 · RX + TX · BLE · Chrome only</div>
+  <div class="footer">IrTrace · ESP32-C5 · RX · BLE · Chrome only</div>
 </div>
 
 <script>
@@ -541,7 +304,6 @@ function onConnected() {
   setStrip('ok', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
   setControls(true);
   setPill('ir-pill', 'pill pill-live', 'Live');
-  setPill('tx-pill', 'pill pill-ok',   'Connected');
   addLog('sys', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
 }
 
@@ -552,8 +314,6 @@ function onDisconnected() {
   setStrip('', 'Disconnected — tap Connect to reconnect');
   setControls(false);
   setPill('ir-pill', 'pill pill-idle', 'Waiting');
-  setPill('tx-pill', 'pill pill-idle', 'Not Connected');
-  setTxStatus('', '— Disconnected —');
   addLog('sys', 'Disconnected');
 }
 
@@ -565,11 +325,8 @@ function onNotify(event) {
   if (!raw) return;
   addLog('rx', raw);
 
-  const ci  = raw.indexOf(':');
-  if (ci === -1) {
-    // no colon — just log it
-    return;
-  }
+  const ci = raw.indexOf(':');
+  if (ci === -1) return;
   const key = raw.substring(0, ci).toUpperCase();
   const val = raw.substring(ci + 1).trim();
 
@@ -581,46 +338,15 @@ function onNotify(event) {
     case 'TEMP_RX':  updateIR('temp-rx',  val); break;
     case 'FAN':      updateIR('fan',      val); break;
 
-    // ── TX feedback ──
-    case 'TX':
-      if (val === 'OK') {
-        setTxStatus('ok', '✅ IR Sent OK');
-        addLog('txok', 'IR transmitted successfully');
-        setTimeout(() => setTxStatus('', '— Ready —'), 3000);
-      } else {
-        setTxStatus('err', '❌ TX Error: ' + val);
-      }
-      break;
-
-    // ── State sync from ESP32 ──
-    case 'VAR':
-      syncSelect('sel-variant', val);
-      addLog('sys', 'Variant: ' + val);
-      break;
-    case 'PWR':
-      addLog('sys', 'Power state: ' + val);
-      break;
-    case 'TEMP':
-      // This is TX temp echo (not RX decoded temp)
-      const t = parseInt(val);
-      if (!isNaN(t) && t >= 16 && t <= 30) {
-        document.getElementById('slider-temp').value = t;
-        document.getElementById('temp-display').innerHTML = t + '<span>°C</span>';
-      }
-      break;
-    case 'RPT':
-      const r = parseInt(val);
-      if (!isNaN(r)) document.getElementById('inp-repeat').value = r;
-      addLog('sys', 'Repeat: ' + val);
-      break;
+    // ── RAW state sync ──
     case 'RAW':
       document.getElementById('btn-raw-on').classList.toggle('active-on',  val === 'ON');
       document.getElementById('btn-raw-off').classList.toggle('active-off', val === 'OFF');
       break;
+
+    // ── Errors ──
     case 'ERR':
-      setTxStatus('err', '⚠️ ' + val);
       addLog('err', val);
-      setTimeout(() => setTxStatus('', '— Ready —'), 4000);
       break;
   }
 }
@@ -652,50 +378,6 @@ function updateIR(field, val) {
 }
 
 // ============================================================
-// AC Control — send commands
-// ============================================================
-function sendVariant() {
-  const id = document.getElementById('sel-variant').value;
-  sendCmd('v ' + id);
-}
-
-function adjustTemp(delta) {
-  const s = document.getElementById('slider-temp');
-  let v = parseInt(s.value) + delta;
-  v = Math.max(16, Math.min(30, v));
-  s.value = v;
-  onSlider(v);
-}
-
-function onSlider(val) {
-  document.getElementById('temp-display').innerHTML = val + '<span>°C</span>';
-}
-
-function sendSetTemp() {
-  const temp = document.getElementById('slider-temp').value;
-  setTxStatus('sending', '⏳ Sending temp ' + temp + '°C...');
-  sendCmd('t ' + temp);
-}
-
-function sendRepeat() {
-  const rpt = document.getElementById('inp-repeat').value;
-  const n = parseInt(rpt);
-  if (isNaN(n) || n < 1 || n > 10) { addLog('err', 'Repeat must be 1-10'); return; }
-  sendCmd('r ' + n);
-}
-
-function sendPower(cmd) {
-  if (cmd === 'on') {
-    const temp = document.getElementById('slider-temp').value;
-    setTxStatus('sending', '⏳ Sending POWER ON ' + temp + '°C...');
-    sendCmd('on ' + temp);
-  } else {
-    setTxStatus('sending', '⏳ Sending POWER OFF...');
-    sendCmd('off');
-  }
-}
-
-// ============================================================
 // Raw BLE send
 // ============================================================
 async function sendCmd(cmd) {
@@ -718,11 +400,8 @@ async function sendManual() {
 // Helpers
 // ============================================================
 function setControls(on) {
-  ['sel-variant','slider-temp','btn-tminus','btn-tplus','btn-settemp',
-   'inp-repeat','btn-setrpt','btn-on','btn-off',
-   'btn-raw-on','btn-raw-off','inp-send','btn-send']
-  .forEach(id => { const e = document.getElementById(id); if(e) e.disabled = !on; });
-  if (on) setTxStatus('', '— Ready —');
+  ['btn-raw-on', 'btn-raw-off', 'inp-send', 'btn-send']
+    .forEach(id => { const e = document.getElementById(id); if (e) e.disabled = !on; });
 }
 
 function setStrip(type, msg) {
@@ -734,17 +413,6 @@ function setStrip(type, msg) {
 function setPill(id, cls, txt) {
   const el = document.getElementById(id);
   if (el) { el.className = cls; el.textContent = txt; }
-}
-
-function setTxStatus(type, msg) {
-  const el = document.getElementById('tx-status');
-  el.className = 'tx-status ' + (type || '');
-  el.textContent = msg;
-}
-
-function syncSelect(id, val) {
-  const el = document.getElementById(id);
-  if (el) el.value = val;
 }
 
 let logFirst = true;
