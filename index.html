@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IrTrace BLE</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg:        #eef0f4;
+    --surface:   #ffffff;
+    --surface2:  #f7f8fa;
+    --border:    #e2e5eb;
+    --text:      #111318;
+    --muted:     #6b7280;
+    --accent:    #0052cc;
+    --accent-lt: #e8f0ff;
+    --green:     #16a34a;
+    --green-lt:  #dcfce7;
+    --red:       #dc2626;
+    --red-lt:    #fee2e2;
+    --orange:    #d97706;
+    --orange-lt: #fef3c7;
+    --mono:      'JetBrains Mono', monospace;
+    --sans:      'Outfit', sans-serif;
+    --r:         12px;
+    --shadow:    0 1px 3px rgba(0,0,0,.07);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); padding-bottom: 48px; }
+
+  /* ── HEADER ─────────────────────────────────────────────── */
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 20px; height: 58px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100; box-shadow: var(--shadow);
+  }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand-icon {
+    width: 36px; height: 36px; background: var(--accent); border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .brand-icon svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .brand-name { font-family: var(--mono); font-weight: 700; font-size: .95rem; }
+  .brand-sub  { font-size: .63rem; color: var(--muted); font-family: var(--mono); }
+  #btn-connect {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 18px; border: none; border-radius: 9px;
+    font-family: var(--sans); font-size: .85rem; font-weight: 600;
+    cursor: pointer; background: var(--accent); color: #fff;
+    box-shadow: 0 2px 6px rgba(0,82,204,.25); transition: all .15s;
+  }
+  #btn-connect:hover      { background: #003fa3; }
+  #btn-connect.conn       { background: var(--red-lt); color: var(--red); box-shadow: none; }
+  #btn-connect.conn:hover { background: #fecaca; }
+  .ble-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: rgba(255,255,255,.6); flex-shrink: 0;
+  }
+  #btn-connect.conn .ble-dot { background: var(--red); box-shadow: 0 0 0 3px rgba(220,38,38,.2); }
+
+  /* ── STATUS STRIP ───────────────────────────────────────── */
+  #status-strip {
+    font-family: var(--mono); font-size: .7rem;
+    padding: 7px 20px; display: flex; align-items: center; gap: 8px;
+    background: var(--accent-lt); color: var(--accent);
+    border-bottom: 1px solid #c5d8ff; transition: all .3s;
+  }
+  #status-strip.ok   { background: var(--green-lt);  color: var(--green);  border-color: #bbf7d0; }
+  #status-strip.err  { background: var(--red-lt);    color: var(--red);    border-color: #fecaca; }
+  #status-strip.warn { background: var(--orange-lt); color: var(--orange); border-color: #fde68a; }
+  .sdot {
+    width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0;
+    animation: blink 2s infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+  #status-strip.ok .sdot, #status-strip.err .sdot { animation: none; }
+
+  /* ── LAYOUT ─────────────────────────────────────────────── */
+  .wrap { max-width: 600px; margin: 0 auto; padding: 20px 16px 0; display: flex; flex-direction: column; gap: 14px; }
+
+  /* ── CARD ───────────────────────────────────────────────── */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 11px 16px; background: var(--surface2); border-bottom: 1px solid var(--border);
+  }
+  .card-label { font-family: var(--mono); font-size: .65rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .pill { font-family: var(--mono); font-size: .62rem; font-weight: 700; padding: 3px 9px; border-radius: 20px; }
+  .pill-idle { background: #f1f3f7; color: var(--muted); }
+  .pill-live { background: var(--green-lt); color: var(--green); }
+  .pill-proto{ background: var(--accent-lt); color: var(--accent); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── IR RX GRID ─────────────────────────────────────────── */
+  .ir-grid { display: grid; grid-template-columns: 1fr 1fr; }
+  .ir-cell { padding: 16px 18px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .ir-cell:nth-child(2n)        { border-right: none; }
+  .ir-cell.full                 { grid-column: 1/-1; border-right: none; }
+  .ir-cell:nth-last-child(-n+2) { border-bottom: none; }
+  .ir-cell.full:last-child      { border-bottom: none; }
+  .ir-field { font-family: var(--mono); font-size: .6rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #a0aab8; margin-bottom: 5px; }
+  .ir-val   { font-family: var(--mono); font-size: 1.2rem; font-weight: 700; color: var(--text); transition: color .2s; min-height: 1.4rem; }
+  .ir-val.empty { color: #d1d5db; font-size: 1rem; }
+  .ir-val.proto { color: var(--accent); font-size: 1rem; }
+  .ir-val.on    { color: var(--green); }
+  .ir-val.off   { color: var(--red); }
+  .ir-val.na    { color: #c5cad4; font-size: .9rem; }
+  @keyframes flash { 0%{background:#dbeafe} 100%{background:var(--surface)} }
+  .ir-cell.flash { animation: flash .5s ease-out forwards; }
+
+  /* ── DISCOVERY CARD ─────────────────────────────────────── */
+  #discovery-card { display: none; }
+
+  .disc-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+
+  /* Temp control */
+  .temp-ctrl-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px;
+  }
+  .temp-ctrl-lbl { font-family: var(--mono); font-size: .68rem; font-weight: 700; color: var(--muted); flex-shrink: 0; }
+  .btn-adj {
+    width: 36px; height: 36px; border: 1.5px solid var(--border); border-radius: 8px;
+    background: var(--bg); font-size: 1.2rem; font-weight: 700; color: var(--text);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all .12s; flex-shrink: 0;
+  }
+  .btn-adj:hover    { border-color: var(--accent); background: var(--accent-lt); color: var(--accent); }
+  .btn-adj:disabled { opacity: .4; cursor: not-allowed; }
+  .temp-display-big {
+    flex: 1; text-align: center;
+    font-family: var(--mono); font-size: 1.6rem; font-weight: 700; color: var(--accent);
+  }
+  .temp-display-big span { font-size: .8rem; color: var(--muted); }
+
+  /* Active variant tag */
+  .active-tag {
+    font-family: var(--mono); font-size: .68rem;
+    padding: 7px 12px; border-radius: 8px;
+    background: var(--green-lt); color: var(--green);
+    border: 1px solid #86efac;
+  }
+  .active-tag span { font-weight: 700; }
+
+  /* Section sub-header */
+  .section-head {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-label {
+    font-family: var(--mono); font-size: .62rem; font-weight: 700;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+  }
+  .section-badge {
+    font-family: var(--mono); font-size: .58rem; font-weight: 700;
+    padding: 2px 7px; border-radius: 20px;
+    background: var(--accent-lt); color: var(--accent);
+  }
+
+  /* Protocol dropdowns */
+  .proto-select {
+    width: 100%; padding: 10px 12px;
+    border: 1.5px solid var(--border); border-radius: 8px;
+    font-family: var(--mono); font-size: .78rem; color: var(--text);
+    background: var(--bg); outline: none; cursor: pointer;
+    transition: border-color .15s;
+  }
+  .proto-select:focus    { border-color: var(--accent); background: #fff; }
+  .proto-select:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* Test button row */
+  .test-row { display: flex; gap: 8px; }
+  .btn-test {
+    flex: 1; padding: 11px 6px;
+    border: none; border-radius: 9px;
+    font-family: var(--mono); font-size: .75rem; font-weight: 700;
+    cursor: pointer; transition: all .15s; letter-spacing: .04em;
+  }
+  .btn-test:disabled { opacity: .35; cursor: not-allowed; }
+  .btn-test.off  { background: var(--red-lt);    color: var(--red);    border: 1.5px solid #fca5a5; }
+  .btn-test.on   { background: var(--green-lt);  color: var(--green);  border: 1.5px solid #86efac; }
+  .btn-test.temp { background: var(--accent-lt); color: var(--accent); border: 1.5px solid #93c5fd; }
+  .btn-test.off:not(:disabled):hover  { background: #fecaca; }
+  .btn-test.on:not(:disabled):hover   { background: #bbf7d0; }
+  .btn-test.temp:not(:disabled):hover { background: #bfdbfe; }
+
+  /* Section divider */
+  .section-divider { height: 1px; background: var(--border); }
+
+  /* Submit button */
+  .btn-submit {
+    width: 100%; padding: 13px;
+    border: none; border-radius: 10px;
+    font-family: var(--mono); font-size: .82rem; font-weight: 700;
+    background: var(--accent); color: #fff;
+    cursor: pointer; transition: background .15s; letter-spacing: .03em;
+  }
+  .btn-submit:hover    { background: #003fa3; }
+  .btn-submit:disabled { background: #d1d5db; cursor: not-allowed; }
+
+  /* No-candidate notice */
+  .no-candidate {
+    font-family: var(--mono); font-size: .7rem; color: var(--orange);
+    background: var(--orange-lt); border: 1px solid #fde68a;
+    border-radius: 8px; padding: 9px 12px;
+  }
+
+  /* ── DEBUG CARD ─────────────────────────────────────────── */
+  .ctrl-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .ctrl-row  { display: flex; align-items: center; gap: 10px; }
+  .ctrl-lbl  { font-family: var(--mono); font-size: .68rem; font-weight: 700; color: var(--muted); width: 72px; flex-shrink: 0; }
+  .raw-pair { display: flex; gap: 6px; flex: 1; }
+  .btn-tog {
+    flex: 1; padding: 8px;
+    border: 1.5px solid var(--border); border-radius: 8px;
+    font-family: var(--mono); font-size: .72rem; font-weight: 700;
+    background: var(--bg); color: var(--muted); cursor: pointer; transition: all .15s;
+  }
+  .btn-tog:disabled   { opacity: .35; cursor: not-allowed; }
+  .btn-tog.active-on  { border-color: var(--green); background: var(--green-lt); color: var(--green); }
+  .btn-tog.active-off { border-color: var(--red);   background: var(--red-lt);   color: var(--red);   }
+
+  /* ── WIFI CONFIG CARD ─────────────────────────────────── */
+  .wifi-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .wifi-row  { display: flex; flex-direction: column; gap: 6px; }
+  .wifi-lbl  { font-family: var(--mono); font-size: .65rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  
+  .pass-wrap { position: relative; display: flex; align-items: center; }
+  #inp-wifi-pass { width: 100%; padding: 10px 40px 10px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-family: var(--mono); font-size: .8rem; background: var(--bg); outline: none; }
+  #inp-wifi-pass:focus { border-color: var(--accent); background: #fff; }
+  .btn-eye { position: absolute; right: 10px; background: none; border: none; cursor: pointer; color: var(--muted); padding: 4px; display: flex; align-items: center; justify-content: center; }
+  .btn-eye svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+  .wifi-actions { display: flex; gap: 8px; margin-top: 4px; }
+  .btn-wifi { flex: 1; padding: 11px; border: none; border-radius: 9px; font-family: var(--mono); font-size: .75rem; font-weight: 700; cursor: pointer; transition: all .15s; }
+  .btn-wifi.rescan { background: var(--bg); color: var(--text); border: 1.5px solid var(--border); }
+  .btn-wifi.rescan:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .btn-wifi.save   { background: var(--accent); color: #fff; }
+  .btn-wifi.save:hover:not(:disabled)   { background: #003fa3; }
+  .btn-wifi:disabled { opacity: .4; cursor: not-allowed; }
+
+  #wifi-manual-wrap { display: none; margin-top: 4px; }
+  #inp-wifi-manual { width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-family: var(--mono); font-size: .8rem; background: var(--bg); outline: none; }
+  #inp-wifi-manual:focus { border-color: var(--accent); background: #fff; }
+
+  /* ── LOG ────────────────────────────────────────────────── */
+  .log-wrap { padding: 12px 16px; }
+  #log { font-family: var(--mono); font-size: .71rem; line-height: 1.75; height: 180px; overflow-y: auto; }
+  #log::-webkit-scrollbar { width: 4px; }
+  #log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .ll { display: flex; gap: 8px; }
+  .lt { color: #b0b8c8; flex-shrink: 0; }
+  .lm { word-break: break-all; }
+  .lm.rx  { color: var(--accent); }
+  .lm.tx  { color: var(--green); }
+  .lm.err { color: var(--red); }
+  .lm.sys { color: var(--muted); font-style: italic; }
+
+  /* ── SEND ROW ───────────────────────────────────────────── */
+  .send-row { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); background: var(--surface2); }
+  #inp-send { flex: 1; padding: 9px 13px; border: 1.5px solid var(--border); border-radius: 9px; font-family: var(--mono); font-size: .82rem; outline: none; background: #fff; transition: border-color .15s; }
+  #inp-send:focus    { border-color: var(--accent); }
+  #inp-send:disabled { background: var(--bg); cursor: not-allowed; }
+  #btn-send { padding: 9px 20px; background: var(--accent); color: #fff; border: none; border-radius: 9px; font-family: var(--mono); font-size: .78rem; font-weight: 700; cursor: pointer; transition: background .15s; }
+  #btn-send:hover    { background: #003fa3; }
+  #btn-send:disabled { background: #d1d5db; cursor: not-allowed; }
+
+  .footer { text-align: center; font-family: var(--mono); font-size: .6rem; color: #c0c8d4; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ──────────────────────────────────────────────── -->
+<header>
+  <div class="brand">
+    <div class="brand-icon">
+      <svg viewBox="0 0 24 24"><path d="M9 18c-1.5-1.5-2-3.5-2-6s.5-4.5 2-6"/><path d="M15 6c1.5 1.5 2 3.5 2 6s-.5 4.5-2 6"/><circle cx="12" cy="12" r="2"/><path d="M6 21c-2.5-2.5-4-6-4-9s1.5-6.5 4-9"/><path d="M18 3c2.5 2.5 4 6 4 9s-1.5 6.5-4 9"/></svg>
+    </div>
+    <div>
+      <div class="brand-name">IrTrace</div>
+      <div class="brand-sub">ESP32-C5 · RX · BLE</div>
+    </div>
+  </div>
+  <button id="btn-connect" onclick="toggleConnect()">
+    <span class="ble-dot"></span>
+    <span id="btn-label">Connect</span>
+  </button>
+</header>
+
+<div id="status-strip">
+  <span class="sdot"></span>
+  <span id="strip-msg">Disconnected — tap Connect to scan</span>
+</div>
+
+<div class="wrap">
+
+  <!-- ── IR RECEIVED SIGNAL ──────────────────────────────── -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-label">IR Received Signal</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span id="last-ts" style="font-family:var(--mono);font-size:.6rem;color:#b8bfc9"></span>
+        <span class="pill pill-idle" id="ir-pill">Waiting</span>
+      </div>
+    </div>
+    <div class="ir-grid">
+      <div class="ir-cell full" id="cell-protocol">
+        <div class="ir-field">Protocol</div>
+        <div class="ir-val empty" id="val-protocol">—</div>
+      </div>
+      <div class="ir-cell" id="cell-power">
+        <div class="ir-field">Power</div>
+        <div class="ir-val empty" id="val-power">—</div>
+      </div>
+      <div class="ir-cell" id="cell-mode">
+        <div class="ir-field">Mode</div>
+        <div class="ir-val empty" id="val-mode">—</div>
+      </div>
+      <div class="ir-cell" id="cell-temp-rx">
+        <div class="ir-field">Temperature (RX)</div>
+        <div class="ir-val empty" id="val-temp-rx">—</div>
+      </div>
+      <div class="ir-cell" id="cell-fan">
+        <div class="ir-field">Fan Speed</div>
+        <div class="ir-val empty" id="val-fan">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── WIFI CONFIGURATION ────────────────────────────── -->
+  <div class="card" id="wifi-card">
+    <div class="card-head">
+      <span class="card-label">Wi-Fi Configuration</span>
+      <span class="pill pill-idle" id="wifi-pill">Scan Ready</span>
+    </div>
+    <div class="wifi-body">
+      <div class="wifi-row">
+        <label class="wifi-lbl">Select Network</label>
+        <select class="proto-select" id="sel-wifi" disabled onchange="onWifiSelectChange()">
+          <option value="-1">Scanning for networks...</option>
+        </select>
+        <div id="wifi-manual-wrap">
+          <input id="inp-wifi-manual" placeholder="Enter Hidden SSID...">
+        </div>
+      </div>
+      <div class="wifi-row">
+        <label class="wifi-lbl">Password</label>
+        <div class="pass-wrap">
+          <input type="password" id="inp-wifi-pass" disabled placeholder="Enter password...">
+          <button class="btn-eye" onclick="togglePass('inp-wifi-pass')">
+            <svg id="eye-icon" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="wifi-actions">
+        <button class="btn-wifi rescan" id="btn-wifi-rescan" disabled onclick="requestWifiScan()">RE-SCAN</button>
+        <button class="btn-wifi save"   id="btn-wifi-save"   disabled onclick="submitWifi()">SAVE WIFI</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PROTOCOL DISCOVERY ──────────────────────────────── -->
+  <div class="card" id="discovery-card">
+    <div class="card-head">
+      <span class="card-label">Protocol Discovery</span>
+      <span class="pill pill-proto" id="proto-pill">—</span>
+    </div>
+    <div class="disc-body">
+
+      <!-- Shared temperature control -->
+      <div class="temp-ctrl-row">
+        <span class="temp-ctrl-lbl">Temp</span>
+        <button class="btn-adj" id="btn-tminus" onclick="adjustTemp(-1)">−</button>
+        <div class="temp-display-big" id="temp-display">24<span>°C</span></div>
+        <button class="btn-adj" id="btn-tplus"  onclick="adjustTemp(+1)">+</button>
+      </div>
+
+      <!-- Active variant indicator -->
+      <div class="active-tag" id="active-tag" style="display:none">
+        Active variant: <span id="active-name">—</span>
+      </div>
+
+      <!-- ── SECTION A: Suggested Protocols ── -->
+      <div class="section-head">
+        <span class="section-label">Suggested Protocols</span>
+        <span class="section-badge" id="candidate-count"></span>
+      </div>
+
+      <!-- No-candidate notice (hidden when candidates exist) -->
+      <div class="no-candidate" id="no-candidate" style="display:none">
+        ⚠️ No direct TX candidates for this protocol — use All Protocols below.
+      </div>
+
+      <select class="proto-select" id="sel-lookup" disabled onchange="onLookupChange()">
+        <option value="-1">— Press a remote button to populate —</option>
+      </select>
+
+      <div class="test-row">
+        <button class="btn-test off"  id="lk-off"  disabled onclick="testSection('lookup','off')">TEST OFF</button>
+        <button class="btn-test on"   id="lk-on"   disabled onclick="testSection('lookup','on')">TEST ON</button>
+        <button class="btn-test temp" id="lk-temp" disabled onclick="testSection('lookup','temp')">SET TEMP</button>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- ── SECTION B: All Protocols ── -->
+      <div class="section-head">
+        <span class="section-label">All Protocols</span>
+        <span class="section-badge">67 variants</span>
+      </div>
+
+      <select class="proto-select" id="sel-universal" disabled onchange="onUniversalChange()">
+        <option value="-1">⚡ Local Setup — RAW Capture</option>
+        <!-- populated by buildUniversalDropdown() -->
+      </select>
+
+      <div class="test-row">
+        <button class="btn-test off"  id="un-off"  disabled onclick="testSection('universal','off')">TEST OFF</button>
+        <button class="btn-test on"   id="un-on"   disabled onclick="testSection('universal','on')">TEST ON</button>
+        <button class="btn-test temp" id="un-temp" disabled onclick="testSection('universal','temp')">SET TEMP</button>
+      </div>
+
+      <!-- Submit -->
+      <button class="btn-submit" id="btn-submit" disabled onclick="submitProtocol()">
+        ✅ SUBMIT — Protocol Confirmed
+      </button>
+
+    </div>
+  </div>
+
+  <!-- ── DEBUG ────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-label">Debug</span>
+    </div>
+    <div class="ctrl-body">
+      <div class="ctrl-row">
+        <span class="ctrl-lbl">Raw Out</span>
+        <div class="raw-pair">
+          <button class="btn-tog" id="btn-raw-on"  disabled onclick="sendCmd('RAW=ON')">ON</button>
+          <button class="btn-tog" id="btn-raw-off" disabled onclick="sendCmd('RAW=OFF')">OFF</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MESSAGE LOG ──────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-label">Message Log</span>
+      <span onclick="clearLog()" style="font-family:var(--mono);font-size:.65rem;color:var(--muted);cursor:pointer;padding:2px 8px;border-radius:5px">Clear</span>
+    </div>
+    <div class="log-wrap">
+      <div id="log">
+        <div class="ll"><span class="lm sys">Log empty — connect to start.</span></div>
+      </div>
+    </div>
+    <div class="send-row">
+      <input id="inp-send" placeholder="Manual command (e.g. RAW=ON, RAW=OFF, status)..." disabled
+             onkeydown="if(event.key==='Enter') sendManual()">
+      <button id="btn-send" disabled onclick="sendManual()">SEND</button>
+    </div>
+  </div>
+
+  <div class="footer">IrTrace · ESP32-C5 · RX · BLE · Chrome only</div>
+</div>
+
+<script>
+// ============================================================
+// BLE UUIDs — Nordic UART Service
+// ============================================================
+const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const TX_UUID      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+const RX_UUID      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+
+let bleDevice = null, rxChar = null, connected = false;
+const enc = new TextEncoder(), dec = new TextDecoder();
+
+// ============================================================
+// PROTOCOL LOOKUP TABLE
+// Source: IR_Protocol_Family_Map.md + IR_TRANSMITTER.h
+// Key  : decoded protocol string (from PROTOCOL: BLE message)
+// Value: ordered candidate array [[variantId, displayName], ...]
+// ============================================================
+const PROTOCOL_LOOKUP = {
+  // ── Mitsubishi Electric ───────────────────────────────────
+  'MITSUBISHI_AC':       [[0,'Mitsubishi STD 144-bit'],[1,'Mitsubishi 112-bit'],[2,'Mitsubishi 136-bit']],
+  'MITSUBISHI112':       [[1,'Mitsubishi 112-bit'],[2,'Mitsubishi 136-bit'],[0,'Mitsubishi STD 144-bit']],
+  'MITSUBISHI136':       [[2,'Mitsubishi 136-bit'],[1,'Mitsubishi 112-bit'],[0,'Mitsubishi STD 144-bit']],
+  // Teknopoint + TCL share timing with Mitsubishi112 — field confirmed: v1 works on Teknopoint Allegro
+  'TEKNOPOINT':          [[49,'TCL 96-bit / GZ055BE1'],[48,'TCL 112-bit'],[1,'Mitsubishi 112-bit'],[2,'Mitsubishi 136-bit'],[0,'Mitsubishi STD 144-bit']],
+  'TCL96AC':             [[49,'TCL 96-bit / GZ055BE1'],[48,'TCL 112-bit'],[1,'Mitsubishi 112-bit'],[2,'Mitsubishi 136-bit']],
+  'TCL112AC':            [[48,'TCL 112-bit'],[49,'TCL 96-bit / GZ055BE1'],[1,'Mitsubishi 112-bit'],[2,'Mitsubishi 136-bit']],
+
+  // ── Mitsubishi Heavy Industries ───────────────────────────
+  'MITSUBISHI_HEAVY_152':[[3,'Mitsubishi Heavy 152-bit'],[4,'Mitsubishi Heavy 88-bit']],
+  'MITSUBISHI_HEAVY_88': [[4,'Mitsubishi Heavy 88-bit'],[3,'Mitsubishi Heavy 152-bit']],
+
+  // ── Daikin ───────────────────────────────────────────────
+  'DAIKIN':    [[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit'],[9,'Daikin152'],[10,'Daikin160'],[11,'Daikin176'],[13,'Daikin216']],
+  'DAIKIN2':   [[6,'Daikin2 312-bit'],[5,'Daikin STD 280-bit'],[9,'Daikin152'],[10,'Daikin160'],[11,'Daikin176'],[13,'Daikin216']],
+  'DAIKIN64':  [[7,'Daikin64 64-bit (toggle)'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
+  'DAIKIN128': [[8,'Daikin128 128-bit (toggle)'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
+  'DAIKIN152': [[9,'Daikin152 152-bit'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
+  'DAIKIN160': [[10,'Daikin160 160-bit'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
+  'DAIKIN176': [[11,'Daikin176 176-bit'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
+  'DAIKIN216': [[13,'Daikin216 216-bit'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
+  // DAIKIN200 / DAIKIN312 — no TX class, best-effort fallback to standard Daikin variants
+  'DAIKIN200': [[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit'],[9,'Daikin152'],[10,'Daikin160'],[11,'Daikin176'],[13,'Daikin216']],
+  'DAIKIN312': [[6,'Daikin2 312-bit'],[5,'Daikin STD 280-bit'],[9,'Daikin152'],[10,'Daikin160'],[11,'Daikin176'],[13,'Daikin216']],
+
+  // ── Fujitsu / Panasonic (cross-check — ordering matters) ─
+  'FUJITSU_AC':    [[15,'Fujitsu 56-128-bit'],[16,'Panasonic 216-bit']],
+  'PANASONIC_AC':  [[16,'Panasonic 216-bit'],[15,'Fujitsu 56-128-bit']],
+  'PANASONIC_AC32':[[17,'Panasonic32 32-bit (toggle)'],[16,'Panasonic 216-bit'],[15,'Fujitsu 56-128-bit']],
+
+  // ── Samsung ──────────────────────────────────────────────
+  'SAMSUNG_AC': [[18,'Samsung 112/168-bit']],
+
+  // ── LG ───────────────────────────────────────────────────
+  'LG':  [[19,'LG Standard (GE6711AR2853M)'],[77,'LG2 (AKB75215403)']],
+  'LG2': [[77,'LG2 (AKB75215403)'],[19,'LG Standard (GE6711AR2853M)']],
+
+  // ── Hitachi (try decoded sub-variant first, then others) ─
+  'HITACHI_AC':    [[20,'Hitachi STD 224-bit'],[21,'Hitachi AC1 104-bit'],[27,'Hitachi AC424'],[26,'Hitachi AC344'],[24,'Hitachi AC264'],[25,'Hitachi AC296']],
+  'HITACHI_AC1':   [[21,'Hitachi AC1 104-bit'],[20,'Hitachi STD 224-bit'],[27,'Hitachi AC424'],[26,'Hitachi AC344'],[24,'Hitachi AC264'],[25,'Hitachi AC296']],
+  'HITACHI_AC264': [[24,'Hitachi AC264 264-bit'],[27,'Hitachi AC424'],[26,'Hitachi AC344'],[25,'Hitachi AC296'],[20,'Hitachi STD 224-bit'],[21,'Hitachi AC1']],
+  'HITACHI_AC296': [[25,'Hitachi AC296 296-bit'],[27,'Hitachi AC424'],[26,'Hitachi AC344'],[24,'Hitachi AC264'],[20,'Hitachi STD 224-bit'],[21,'Hitachi AC1']],
+  'HITACHI_AC344': [[26,'Hitachi AC344 344-bit'],[27,'Hitachi AC424'],[25,'Hitachi AC296'],[24,'Hitachi AC264'],[20,'Hitachi STD 224-bit'],[21,'Hitachi AC1']],
+  'HITACHI_AC424': [[27,'Hitachi AC424 424-bit'],[26,'Hitachi AC344'],[25,'Hitachi AC296'],[24,'Hitachi AC264'],[20,'Hitachi STD 224-bit'],[21,'Hitachi AC1']],
+
+  // ── Toshiba (also covers Carrier 42NQV series) ───────────
+  'TOSHIBA_AC': [[28,'Toshiba 72-bit+']],
+
+  // ── Haier / Daichi / Mabe ────────────────────────────────
+  'HAIER_AC':       [[29,'Haier STD 72-bit'],[30,'Haier YRW02 112-bit'],[31,'Haier AC160'],[32,'Haier AC176']],
+  'HAIER_AC_YRW02': [[30,'Haier YRW02 112-bit'],[29,'Haier STD 72-bit'],[31,'Haier AC160'],[32,'Haier AC176']],
+  'HAIER_AC160':    [[31,'Haier AC160 160-bit'],[30,'Haier YRW02 112-bit'],[29,'Haier STD 72-bit'],[32,'Haier AC176']],
+  'HAIER_AC176':    [[32,'Haier AC176 176-bit'],[31,'Haier AC160 160-bit'],[30,'Haier YRW02 112-bit'],[29,'Haier STD 72-bit']],
+
+  // ── Kelvinator / Gree (Kelvinator FIRST — ordering rule) ─
+  'KELVINATOR': [[33,'Kelvinator 128-bit'],[34,'Gree 64-bit']],
+  'GREE':       [[33,'Kelvinator 128-bit'],[34,'Gree 64-bit']],
+
+  // ── Midea / Coolix (cross-check) ─────────────────────────
+  'MIDEA':    [[35,'Midea 48-bit'],[36,'Midea24 24-bit'],[37,'Coolix 24-bit'],[38,'Coolix48 48-bit']],
+  'MIDEA24':  [[36,'Midea24 24-bit'],[35,'Midea 48-bit']],
+  // Bosch FIRST for Coolix — per IRrecv.cpp ordering rule
+  'COOLIX':   [[72,'Bosch144 144-bit'],[37,'Coolix 24-bit'],[38,'Coolix48 48-bit'],[35,'Midea 48-bit']],
+  'COOLIX48': [[72,'Bosch144 144-bit'],[38,'Coolix48 48-bit'],[37,'Coolix 24-bit'],[35,'Midea 48-bit']],
+
+  // ── Carrier 64-bit ───────────────────────────────────────
+  'CARRIER_AC64': [[41,'Carrier64 64-bit']],
+
+  // ── Sharp (Kelvinator cross-check) ───────────────────────
+  'SHARP_AC': [[44,'Sharp 104-bit'],[33,'Kelvinator 128-bit']],
+
+  // ── Whirlpool ────────────────────────────────────────────
+  'WHIRLPOOL_AC': [[45,'Whirlpool 168-bit (toggle)']],
+
+  // ── Electra / AUX ────────────────────────────────────────
+  'ELECTRA_AC': [[46,'Electra / AUX 104-bit']],
+
+  // ── Vestel ───────────────────────────────────────────────
+  'VESTEL_AC': [[47,'Vestel 56-bit']],
+
+  // ── Teco / Alaska ────────────────────────────────────────
+  'TECO': [[50,'Teco 35-bit']],
+
+  // ── Goodweather ──────────────────────────────────────────
+  'GOODWEATHER': [[51,'Goodweather 48-bit']],
+
+  // ── Neoclima / Soleus Air ────────────────────────────────
+  'NEOCLIMA': [[52,'Neoclima 96-bit']],
+
+  // ── Amcor ────────────────────────────────────────────────
+  'AMCOR': [[53,'Amcor 64-bit']],
+
+  // ── Airwell ──────────────────────────────────────────────
+  'AIRWELL': [[54,'Airwell 34-bit (toggle)']],
+
+  // ── De'Longhi ────────────────────────────────────────────
+  'DELONGHI_AC': [[55,"De'Longhi 64-bit"],[46,'Electra / AUX 104-bit']],
+
+  // ── Sanyo ────────────────────────────────────────────────
+  'SANYO_AC':   [[56,'Sanyo STD 72-bit'],[57,'Sanyo88 88-bit']],
+  'SANYO_AC88': [[57,'Sanyo88 88-bit'],[56,'Sanyo STD 72-bit']],
+  // SANYO_AC152 — no TX class; best-effort fallback
+  'SANYO_AC152':[[56,'Sanyo STD 72-bit (best-effort)'],[57,'Sanyo88 88-bit (best-effort)']],
+
+  // ── Voltas ───────────────────────────────────────────────
+  'VOLTAS': [[59,'Voltas 120-bit']],
+
+  // ── Mirage ───────────────────────────────────────────────
+  'MIRAGE': [[60,'Mirage 120-bit']],
+
+  // ── Corona ───────────────────────────────────────────────
+  'CORONA_AC': [[61,'Corona 168-bit']],
+
+  // ── Airton ───────────────────────────────────────────────
+  'AIRTON': [[62,'Airton 56-bit']],
+
+  // ── EcoClim ──────────────────────────────────────────────
+  'ECOCLIM': [[63,'EcoClim 56-bit']],
+
+  // ── Kelon / Hisense ──────────────────────────────────────
+  'KELON':    [[64,'Kelon 48-bit'],[65,'Kelon168 168-bit']],
+  'KELON168': [[65,'Kelon168 168-bit'],[64,'Kelon 48-bit']],
+
+  // ── Rhoss ────────────────────────────────────────────────
+  'RHOSS': [[66,'Rhoss 96-bit']],
+
+  // ── Technibel ────────────────────────────────────────────
+  'TECHNIBEL_AC': [[67,'Technibel 56-bit']],
+
+  // ── Transcold ────────────────────────────────────────────
+  'TRANSCOLD': [[68,'Transcold 136-bit']],
+
+  // ── Trotec / Duux (split brand — Midea fallback) ─────────
+  'TROTEC':      [[69,'Trotec STD 56-bit'],[70,'Trotec3550 120-bit'],[35,'Midea 48-bit']],
+  'TROTEC_3550': [[70,'Trotec3550 120-bit'],[69,'Trotec STD 56-bit'],[35,'Midea 48-bit']],
+
+  // ── Truma ────────────────────────────────────────────────
+  'TRUMA': [[71,'Truma (variable)']],
+
+  // ── Bosch / Durastar ─────────────────────────────────────
+  'BOSCH144': [[72,'Bosch144 144-bit']],
+
+  // ── Argo ─────────────────────────────────────────────────
+  'ARGO':      [[73,'Argo WREM2 96-bit'],[74,'Argo WREM3 (variable)']],
+  'ARGO_WREM3':[[74,'Argo WREM3 (variable)'],[73,'Argo WREM2 96-bit']],
+
+  // ── Eurom ────────────────────────────────────────────────
+  'EUROM': [[75,'Eurom 96-bit']],
+
+  // ── York ─────────────────────────────────────────────────
+  'YORK': [[76,'York 88-bit']],
+
+  // ── BlueStar Heavy — decoder only, no TX class ───────────
+  'BLUESTARHEAVY': [],  // no candidates → notice shown, use All Protocols
+};
+
+// ============================================================
+// ALL 67 TX VARIANTS — universal dropdown
+// Source: IR_TRANSMITTER.h
+// ============================================================
+const ALL_VARIANTS = [
+  { id:  0, name: 'Mitsubishi STD 144-bit'        },
+  { id:  1, name: 'Mitsubishi 112-bit'             },
+  { id:  2, name: 'Mitsubishi 136-bit'             },
+  { id:  3, name: 'Mitsubishi Heavy 152-bit'       },
+  { id:  4, name: 'Mitsubishi Heavy 88-bit'        },
+  { id:  5, name: 'Daikin STD 280-bit'             },
+  { id:  6, name: 'Daikin2 312-bit'                },
+  { id:  7, name: 'Daikin64 64-bit (toggle)'       },
+  { id:  8, name: 'Daikin128 128-bit (toggle)'     },
+  { id:  9, name: 'Daikin152 152-bit'              },
+  { id: 10, name: 'Daikin160 160-bit'              },
+  { id: 11, name: 'Daikin176 176-bit'              },
+  { id: 13, name: 'Daikin216 216-bit'              },
+  { id: 15, name: 'Fujitsu 56-128-bit'             },
+  { id: 16, name: 'Panasonic 216-bit'              },
+  { id: 17, name: 'Panasonic32 32-bit (toggle)'    },
+  { id: 18, name: 'Samsung 112/168-bit'            },
+  { id: 19, name: 'LG Standard — GE6711AR2853M'   },
+  { id: 77, name: 'LG2 — AKB75215403'             },
+  { id: 20, name: 'Hitachi STD 224-bit'            },
+  { id: 21, name: 'Hitachi AC1 104-bit'            },
+  { id: 24, name: 'Hitachi AC264 264-bit'          },
+  { id: 25, name: 'Hitachi AC296 296-bit'          },
+  { id: 26, name: 'Hitachi AC344 344-bit'          },
+  { id: 27, name: 'Hitachi AC424 424-bit'          },
+  { id: 28, name: 'Toshiba 72-bit+'               },
+  { id: 29, name: 'Haier STD 72-bit'              },
+  { id: 30, name: 'Haier YRW02 112-bit'           },
+  { id: 31, name: 'Haier AC160 160-bit'           },
+  { id: 32, name: 'Haier AC176 176-bit'           },
+  { id: 33, name: 'Kelvinator 128-bit'            },
+  { id: 34, name: 'Gree 64-bit'                   },
+  { id: 35, name: 'Midea 48-bit'                  },
+  { id: 36, name: 'Midea24 24-bit'                },
+  { id: 37, name: 'Coolix 24-bit'                 },
+  { id: 38, name: 'Coolix48 48-bit'               },
+  { id: 41, name: 'Carrier64 64-bit'              },
+  { id: 44, name: 'Sharp 104-bit'                 },
+  { id: 45, name: 'Whirlpool 168-bit (toggle)'    },
+  { id: 46, name: 'Electra / AUX 104-bit'         },
+  { id: 47, name: 'Vestel 56-bit'                 },
+  { id: 48, name: 'TCL 112-bit (TAC09CHSD)'       },
+  { id: 49, name: 'TCL 96-bit (GZ055BE1)'         },
+  { id: 50, name: 'Teco 35-bit'                   },
+  { id: 51, name: 'Goodweather 48-bit'            },
+  { id: 52, name: 'Neoclima 96-bit'               },
+  { id: 53, name: 'Amcor 64-bit'                  },
+  { id: 54, name: 'Airwell 34-bit (toggle)'       },
+  { id: 55, name: "De'Longhi 64-bit"              },
+  { id: 56, name: 'Sanyo STD 72-bit'              },
+  { id: 57, name: 'Sanyo88 88-bit'                },
+  { id: 59, name: 'Voltas 120-bit'                },
+  { id: 60, name: 'Mirage 120-bit'                },
+  { id: 61, name: 'Corona 168-bit'                },
+  { id: 62, name: 'Airton 56-bit'                 },
+  { id: 63, name: 'EcoClim 56-bit'                },
+  { id: 64, name: 'Kelon 48-bit'                  },
+  { id: 65, name: 'Kelon168 168-bit'              },
+  { id: 66, name: 'Rhoss 96-bit'                  },
+  { id: 67, name: 'Technibel 56-bit'              },
+  { id: 68, name: 'Transcold 136-bit'             },
+  { id: 69, name: 'Trotec STD 56-bit'             },
+  { id: 70, name: 'Trotec3550 120-bit'            },
+  { id: 71, name: 'Truma (variable)'              },
+  { id: 72, name: 'Bosch144 144-bit'              },
+  { id: 73, name: 'Argo WREM2 96-bit'             },
+  { id: 74, name: 'Argo WREM3 (variable)'         },
+  { id: 75, name: 'Eurom 96-bit'                  },
+  { id: 76, name: 'York 88-bit'                   },
+];
+
+// ============================================================
+// State
+// ============================================================
+let testTemp       = 24;
+let activeVariantId   = null;  // last variant sent via 'v <id>'
+let activeVariantName = '';
+let wifiList = [];
+
+// ============================================================
+// BLE — Connect / Disconnect
+// ============================================================
+async function toggleConnect() { connected ? disconnect() : await connect(); }
+
+async function connect() {
+  setStrip('warn', 'Scanning for IrTrace-BLE...');
+  try {
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SERVICE_UUID] }]
+    });
+    bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+    setStrip('warn', 'Connecting...');
+    const server  = await bleDevice.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    const txChar  = await service.getCharacteristic(TX_UUID);
+    await txChar.startNotifications();
+    txChar.addEventListener('characteristicvaluechanged', onNotify);
+    rxChar = await service.getCharacteristic(RX_UUID);
+    onConnected();
+  } catch (err) {
+    if (err.name === 'NotFoundError') setStrip('', 'Scan cancelled.');
+    else { setStrip('err', 'Failed: ' + err.message); addLog('err', err.message); }
+  }
+}
+
+function disconnect() {
+  if (bleDevice && bleDevice.gatt.connected) bleDevice.gatt.disconnect();
+}
+
+async function onConnected() {
+  connected = true;
+  document.getElementById('btn-connect').classList.add('conn');
+  document.getElementById('btn-label').textContent = 'Disconnect';
+  setStrip('ok', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
+  setControls(true);
+  setPill('ir-pill', 'pill pill-live', 'Live');
+  addLog('sys', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
+  
+  // Request Wi-Fi list if not already sent
+  await sendCmd('wget');
+}
+
+function onDisconnected() {
+  connected = false; rxChar = null;
+  document.getElementById('btn-connect').classList.remove('conn');
+  document.getElementById('btn-label').textContent = 'Connect';
+  setStrip('', 'Disconnected — tap Connect to reconnect');
+  setControls(false);
+  setPill('ir-pill', 'pill pill-idle', 'Waiting');
+  setPill('wifi-pill', 'pill pill-idle', 'Scan Ready');
+  addLog('sys', 'Disconnected');
+}
+
+// ============================================================
+// BLE — Incoming notifications from ESP32
+// ============================================================
+function onNotify(event) {
+  const raw = dec.decode(event.target.value).trim();
+  if (!raw) return;
+  addLog('rx', raw);
+
+  const ci = raw.indexOf(':');
+  if (ci === -1) return;
+  const key = raw.substring(0, ci).toUpperCase();
+  const val = raw.substring(ci + 1).trim();
+
+  switch (key) {
+    case 'PROTOCOL': onProtocolReceived(val);    break;
+    case 'POWER':    updateIR('power',    val);  break;
+    case 'MODE':     updateIR('mode',     val);  break;
+    case 'TEMP_RX':  updateIR('temp-rx',  val);  break;
+    case 'FAN':      updateIR('fan',      val);  break;
+    case 'RAW':
+      document.getElementById('btn-raw-on').classList.toggle('active-on',  val === 'ON');
+      document.getElementById('btn-raw-off').classList.toggle('active-off', val === 'OFF');
+      break;
+    case 'NET':      onWifiNetworkReceived(val); break;
+    case 'WIFI':
+      if (val === 'OK') addLog('sys', '✅ Wi-Fi credentials saved on device');
+      break;
+    case 'ERR':
+      addLog('err', val);
+      break;
+  }
+}
+
+// ============================================================
+// Wi-Fi Scanning Logic
+// ============================================================
+function onWifiNetworkReceived(val) {
+  if (val === 'NONE') {
+    wifiList = [];
+    updateWifiDropdown();
+    return;
+  }
+  if (val === 'DONE') {
+    updateWifiDropdown();
+    setPill('wifi-pill', 'pill pill-live', 'Scan Done');
+    return;
+  }
+
+  // NET:Index:SSID:RSSI:Security
+  const parts = val.split(':');
+  if (parts.length < 4) return;
+  
+  const index = parseInt(parts[0]);
+  if (index === 0) wifiList = []; // Reset on first item
+  
+  wifiList.push({
+    ssid: parts[1],
+    rssi: parts[2],
+    sec:  parts[3]
+  });
+}
+
+function updateWifiDropdown() {
+  const sel = document.getElementById('sel-wifi');
+  sel.innerHTML = '';
+  
+  if (wifiList.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = "-1";
+    opt.textContent = "No networks found";
+    sel.appendChild(opt);
+  } else {
+    wifiList.forEach((net, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = `${net.ssid} (${net.rssi}dBm) [${net.sec}]`;
+      sel.appendChild(opt);
+    });
+  }
+
+  const manualOpt = document.createElement('option');
+  manualOpt.value = "manual";
+  manualOpt.textContent = "➕ Manual Entry...";
+  sel.appendChild(manualOpt);
+  
+  onWifiSelectChange();
+}
+
+function onWifiSelectChange() {
+  const sel = document.getElementById('sel-wifi');
+  const manualWrap = document.getElementById('wifi-manual-wrap');
+  manualWrap.style.display = (sel.value === 'manual') ? 'block' : 'none';
+}
+
+function togglePass(id) {
+  const el = document.getElementById(id);
+  el.type = (el.type === 'password') ? 'text' : 'password';
+}
+
+async function requestWifiScan() {
+  setPill('wifi-pill', 'pill pill-live', 'Scanning...');
+  await sendCmd('wscan');
+}
+
+async function submitWifi() {
+  const sel = document.getElementById('sel-wifi');
+  let ssid = '';
+  if (sel.value === 'manual') {
+    ssid = document.getElementById('inp-wifi-manual').value.trim();
+  } else if (sel.value >= 0) {
+    ssid = wifiList[sel.value].ssid;
+  }
+
+  if (!ssid) { alert('Please select or enter a Wi-Fi SSID'); return; }
+  const pass = document.getElementById('inp-wifi-pass').value;
+
+  addLog('sys', 'Sending Wi-Fi credentials...');
+  await sendCmd(`WIFI_SET:${ssid}\n${pass}`);
+}
+
+// ============================================================
+// Protocol received → populate discovery card
+// ============================================================
+function onProtocolReceived(rawVal) {
+  // Strip repeat suffix e.g. "MITSUBISHI112 (Repeat)" → "MITSUBISHI112"
+  const proto = rawVal.replace(/\s*\(.*\)/, '').trim().toUpperCase();
+
+  // Update IR grid
+  updateIR('protocol', rawVal);
+
+  // Update discovery card pill
+  document.getElementById('proto-pill').textContent = proto;
+
+  // Populate lookup dropdown from family map
+  populateLookupDropdown(proto);
+
+  // Show the discovery card
+  document.getElementById('discovery-card').style.display = 'block';
+}
+
+// ============================================================
+// Populate lookup dropdown for a given decoded protocol
+// ============================================================
+function populateLookupDropdown(proto) {
+  const sel       = document.getElementById('sel-lookup');
+  const notice    = document.getElementById('no-candidate');
+  const countBadge= document.getElementById('candidate-count');
+  const candidates = PROTOCOL_LOOKUP[proto];
+
+  sel.innerHTML = '';
+
+  if (!candidates) {
+    // Protocol not in lookup table at all
+    notice.style.display = 'block';
+    notice.textContent   = '⚠️ "' + proto + '" not in lookup table — use All Protocols below.';
+    countBadge.textContent = '0 candidates';
+    const opt = document.createElement('option');
+    opt.value = -1;
+    opt.textContent = '— No candidates —';
+    sel.appendChild(opt);
+    setLookupButtons(false);
+    return;
+  }
+
+  if (candidates.length === 0) {
+    // Known protocol but no TX class (e.g. BLUESTARHEAVY)
+    notice.style.display = 'block';
+    notice.textContent   = '⚠️ No TX class for ' + proto + ' — use All Protocols below.';
+    countBadge.textContent = '0 candidates';
+    const opt = document.createElement('option');
+    opt.value = -1;
+    opt.textContent = '— No TX candidates —';
+    sel.appendChild(opt);
+    setLookupButtons(false);
+    return;
+  }
+
+  // Valid candidates
+  notice.style.display = 'none';
+  countBadge.textContent = candidates.length + ' candidate' + (candidates.length > 1 ? 's' : '');
+
+  candidates.forEach(([id, name], i) => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = (i === 0 ? '⭐ ' : (i + 1) + '. ') + name;
+    sel.appendChild(opt);
+  });
+
+  setLookupButtons(connected);
+}
+
+// ============================================================
+// Dropdown change handlers
+// ============================================================
+function onLookupChange() {
+  const id = parseInt(document.getElementById('sel-lookup').value);
+  setLookupButtons(connected && id >= 0);
+}
+
+function onUniversalChange() {
+  // id === -1 means "Local Setup (RAW)" — test buttons stay enabled but show info
+  // when pressed (RAW not yet implemented)
+}
+
+function setLookupButtons(on) {
+  ['lk-off','lk-on','lk-temp'].forEach(id => {
+    document.getElementById(id).disabled = !on;
+  });
+}
+
+// ============================================================
+// Test button handler — called by both sections
+// section : 'lookup' | 'universal'
+// action  : 'off' | 'on' | 'temp'
+// ============================================================
+async function testSection(section, action) {
+  const selId = section === 'lookup' ? 'sel-lookup' : 'sel-universal';
+  const varId = parseInt(document.getElementById(selId).value);
+
+  // RAW capture placeholder
+  if (varId === -1) {
+    addLog('sys', 'RAW capture — coming in next firmware update');
+    return;
+  }
+
+  // Find display name
+  let name = 'Variant ' + varId;
+  if (section === 'lookup') {
+    const opt = document.getElementById('sel-lookup').selectedOptions[0];
+    if (opt) name = opt.textContent.replace(/^[⭐\d]+\.\s*/, '').trim();
+  } else {
+    const v = ALL_VARIANTS.find(v => v.id === varId);
+    if (v) name = v.name;
+  }
+
+  // Build command string
+  let cmd;
+  if      (action === 'off')  cmd = 'off';
+  else if (action === 'on')   cmd = 'on ' + testTemp;
+  else                        cmd = 't '  + testTemp;
+
+  // Send variant select, then the command
+  await sendCmd('v ' + varId);
+  await sendCmd(cmd);
+
+  // Track active variant (for SUBMIT)
+  activeVariantId   = varId;
+  activeVariantName = name;
+  document.getElementById('active-name').textContent = name;
+  document.getElementById('active-tag').style.display = 'block';
+  document.getElementById('btn-submit').disabled = false;
+
+  addLog('sys', 'Testing: ' + name + ' — ' + cmd);
+}
+
+// ============================================================
+// SUBMIT — protocol confirmed (NVS save — placeholder)
+// ============================================================
+async function submitProtocol() {
+  if (activeVariantId === null) return;
+  // Placeholder: sends 'save' command — firmware will handle when NVS is implemented
+  await sendCmd('save');
+  addLog('sys', '✅ Protocol confirmed: [' + activeVariantId + '] ' + activeVariantName);
+  document.getElementById('btn-submit').textContent = '✅ Saved — ' + activeVariantName;
+  document.getElementById('btn-submit').disabled = true;
+}
+
+// ============================================================
+// Temperature control (shared between both sections)
+// ============================================================
+function adjustTemp(delta) {
+  testTemp = Math.max(16, Math.min(30, testTemp + delta));
+  document.getElementById('temp-display').innerHTML = testTemp + '<span>°C</span>';
+}
+
+// ============================================================
+// IR RX field update
+// ============================================================
+function updateIR(field, val) {
+  const el   = document.getElementById('val-' + field);
+  const cell = document.getElementById('cell-' + field);
+  if (!el) return;
+  const na = (!val || val === 'N/A' || val === 'n/a');
+  el.textContent = na ? 'N/A' : val;
+  el.className   = 'ir-val' + (na ? ' na' : '');
+  if (!na) {
+    if (field === 'protocol') {
+      el.classList.add('proto');
+      document.getElementById('last-ts').textContent =
+        'Last: ' + new Date().toLocaleTimeString('en-GB', { hour12: false });
+    }
+    if (field === 'power') el.classList.add(val === 'ON' ? 'on' : 'off');
+  }
+  if (cell) {
+    cell.classList.remove('flash'); void cell.offsetWidth; cell.classList.add('flash');
+    setTimeout(() => cell.classList.remove('flash'), 600);
+  }
+}
+
+// ============================================================
+// BLE send
+// ============================================================
+async function sendCmd(cmd) {
+  if (!connected || !rxChar) { addLog('err', 'Not connected'); return; }
+  try {
+    await rxChar.writeValue(enc.encode(cmd));
+    addLog('tx', cmd);
+  } catch(err) { addLog('err', 'Send failed: ' + err.message); }
+}
+
+async function sendManual() {
+  const inp = document.getElementById('inp-send');
+  const msg = inp.value.trim();
+  if (!msg) return;
+  await sendCmd(msg);
+  inp.value = '';
+}
+
+// ============================================================
+// Helpers
+// ============================================================
+function setControls(on) {
+  // BLE-dependent controls
+  ['btn-raw-on','btn-raw-off','inp-send','btn-send',
+   'btn-tminus','btn-tplus','sel-lookup','sel-universal',
+   'lk-off','lk-on','lk-temp','un-off','un-on','un-temp',
+   'sel-wifi','inp-wifi-pass','btn-wifi-rescan','btn-wifi-save']
+    .forEach(id => { const e = document.getElementById(id); if (e) e.disabled = !on; });
+
+  if (!on) {
+    // Reset lookup buttons state to be safe
+    setLookupButtons(false);
+  }
+}
+
+function setStrip(type, msg) {
+  const el = document.getElementById('status-strip');
+  el.className = type || '';
+  document.getElementById('strip-msg').textContent = msg;
+}
+
+function setPill(id, cls, txt) {
+  const el = document.getElementById(id);
+  if (el) { el.className = cls; el.textContent = txt; }
+}
+
+let logFirst = true;
+function addLog(type, msg) {
+  const el = document.getElementById('log');
+  if (logFirst) { el.innerHTML = ''; logFirst = false; }
+  const ts  = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  const row = document.createElement('div');
+  row.className = 'll';
+  row.innerHTML = `<span class="lt">${ts}</span><span class="lm ${type}">${esc(msg)}</span>`;
+  el.appendChild(row);
+  while (el.children.length > 300) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById('log').innerHTML =
+    '<div class="ll"><span class="lm sys">Log cleared.</span></div>';
+  logFirst = false;
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ============================================================
+// Init — build universal dropdown on page load
+// ============================================================
+(function buildUniversalDropdown() {
+  const sel = document.getElementById('sel-universal');
+  // First option is already "Local Setup (RAW)" — add all 67 variants after
+  ALL_VARIANTS.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.id;
+    opt.textContent = v.id + ' — ' + v.name;
+    sel.appendChild(opt);
+  });
+})();
+
+// Web Bluetooth support check
+if (!navigator.bluetooth) {
+  setStrip('err', 'Web Bluetooth not supported — use Chrome on Android or Desktop');
+  document.getElementById('btn-connect').disabled = true;
+}
+</script>
+</body>
+</html>
