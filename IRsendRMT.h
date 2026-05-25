@@ -5,19 +5,43 @@
 #include "driver/rmt_encoder.h"
 
 // Maximum rmt_symbol_word_t entries in the transmit buffer.
-// Sized for the worst-case single sendGeneric() call:
-//   Hitachi424 leader + 424 bits + header + footer = ~430 symbol pairs.
-//   Large gaps split across multiple symbols add ~10 more.
-//   512 gives comfortable headroom.
-static const uint16_t kRmtSymbolBufSize = 512;
+// Each entry = one mark+space pair = 4 bytes of SRAM.
+// The ESP32-C5 hardware FIFO is only 48 symbols deep, but the copy encoder
+// uses a ping-pong interrupt mechanism to stream any amount of SRAM data
+// through that FIFO — so this software buffer has no hardware-imposed limit.
+// The only constraint is available SRAM (ESP32-C5: 400 KB).
+//
+// Worst-case symbol counts (marks + spaces per repeat × repeat count):
+//   Mitsubishi STD 144-bit, 2 sections, kMitsubishiACMinRepeat=2 : ~870
+//   Hitachi AC424 424-bit, kHitachiAcDefaultRepeat=0             : ~430
+//   Daikin STD 280-bit, 2 sections, kDaikinDefaultRepeat=0       : ~580
+//   Kelvinator 128-bit, 2 sections, kKelvinatorDefaultRepeat=1   : ~540
+//
+// 2048 covers every protocol at maximum repeats with comfortable headroom.
+// RAM cost: 2048 × 4 bytes = 8 KB (trivial on a 400 KB chip).
+static const uint16_t kRmtSymbolBufSize = 2048;
 
 // Spaces >= this threshold (µs) are treated as inter-frame gaps.
 // After building such a space symbol the buffer is flushed to RMT hardware.
-// Threshold set to 20000 µs — above Samsung AC's header space (17844 µs),
-// which is an intra-frame space that must stay buffered with the section data.
-// All inter-frame gaps are >= 20001 µs (Trotec uses explicit space(20001);
-// Samsung AC message gap = 97114 µs; most others use kDefaultMessageGap = 100 ms).
-static const uint32_t kRmtGapThresholdUs = 20000;
+//
+// Threshold set to 36000 µs — just above the largest Daikin inter-section gap
+// (kDaikin2Gap = 35,204 µs). This keeps ALL Daikin family inter-section gaps
+// buffered so every variant transmits in one continuous RMT burst (no CPU gaps
+// between sections that would push the effective silence above the receiver
+// timeout and cause separate per-section captures → UNKNOWN decodes).
+//
+// Still safe for all other protocols:
+//   Samsung AC intra-frame hdr space (17,844 µs) — still below threshold ✓
+//   Trotec / Mitsubishi STD gaps   (< 16,000 µs) — still below threshold ✓
+//   kDefaultMessageGap (100 ms) and all others    — still above threshold ✓
+//
+// Protocols with gaps < 36000 µs that do NOT auto-flush need an explicit
+//   irsend.mark(<footerMark>); irsend.space(36001);
+// after their send call.  Currently applied to:
+//   V0  Mitsubishi STD, V5 Daikin STD, V6 Daikin2,
+//   V8  Daikin128,      V9 Daikin152,  V10 Daikin160,
+//   V11 Daikin176,      V12 Daikin216, V60 Trotec STD.
+static const uint32_t kRmtGapThresholdUs = 36000;
 
 // RMT resolution: 1 µs per tick (1 MHz clock).
 // Maximum representable duration per half-symbol: 32767 µs.
@@ -27,6 +51,10 @@ static const uint32_t kRmtMaxTickDuration = 32767;
 
 // IR carrier duty cycle — 33 % is standard for IR LEDs.
 static const float kRmtCarrierDuty = 0.33f;
+
+// Uncomment to print the RMT symbol buffer (as mark/space µs) to Serial
+// before each hardware transmission.  Use for TX/RX side-by-side comparison.
+// #define IRTX_DEBUG_PRINT
 
 
 class IRsendRMT : public IRsend {

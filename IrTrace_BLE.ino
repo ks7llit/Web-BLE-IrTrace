@@ -98,6 +98,7 @@
 
 // ── WIFI ─────────────────────────────────────────────────────
 #include <WiFi.h>
+#include <Preferences.h>
 
 // ── DBG macros → USB Serial ──────────────────────────────────
 // Must be defined BEFORE including IR_TRANSMITTER.h
@@ -122,14 +123,24 @@ void led_ir_burst() {
 // ============================================================
 //  BLE — configuration
 // ============================================================
-#define BLE_DEVICE_NAME  "IrTrace-BLE"
-#define BLE_SERVICE_UUID "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
-#define BLE_RX_UUID      "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
-#define BLE_TX_UUID      "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
+#define BLE_DEVICE_NAME      "IrTrace-BLE"
+#define BLE_SERVICE_UUID     "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
+#define BLE_RX_UUID          "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
+#define BLE_TX_UUID          "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CFG_NAMESPACE        "irtrace_ble"
+#define CFG_DEFAULT_UID      "999"
+#define CFG_DEFAULT_WAKE_SEC 60u
+#define CFG_ADMIN_PASS       "1234admin"
 
 NimBLECharacteristic* gTxChar        = nullptr;
 bool                  gBleConnected  = false;
 bool                  gNeedsAdvRestart = false;
+bool                  gAdminUnlocked = false;
+Preferences           gPrefs;
+String                gStoredUid      = CFG_DEFAULT_UID;
+uint32_t              gStoredWakeSec  = CFG_DEFAULT_WAKE_SEC;
+String                gStoredWifiSsid = "";
+String                gStoredWifiPass = "";
 
 // ============================================================
 //  WIFI SCAN — top 10 networks
@@ -300,12 +311,97 @@ static bool isValidVariant(uint8_t id) {
 }
 
 // ============================================================
+//  Stored configuration helpers
+// ============================================================
+static String padUid(const String& raw) {
+  long value = raw.toInt();
+  if (value < 1) value = 1;
+  if (value > 999) value = 999;
+  char buf[4];
+  snprintf(buf, sizeof(buf), "%03ld", value);
+  return String(buf);
+}
+
+static void loadStoredConfig() {
+  if (!gPrefs.begin(CFG_NAMESPACE, true)) {
+    Serial.println(F("[CFG] NVS open failed for read"));
+    return;
+  }
+
+  gStoredWifiSsid = gPrefs.getString("ssid", "");
+  gStoredWifiPass = gPrefs.getString("pass", "");
+  const uint8_t storedVariant = gPrefs.getUChar("variant", acVariant);
+  gStoredUid = padUid(gPrefs.getString("uid", CFG_DEFAULT_UID));
+  gStoredWakeSec = gPrefs.getUInt("wake_sec", CFG_DEFAULT_WAKE_SEC);
+  gPrefs.end();
+
+  if (gStoredWakeSec < 60u) gStoredWakeSec = 60u;
+  if (gStoredWakeSec > 36000u) gStoredWakeSec = 36000u;
+  if (isValidVariant(storedVariant)) acVariant = storedVariant;
+
+  Serial.printf("[CFG] Loaded variant=%d (%s) uid=%s wake=%lu ssid=%s\n",
+                acVariant, variantName(acVariant), gStoredUid.c_str(),
+                (unsigned long)gStoredWakeSec,
+                gStoredWifiSsid.length() ? gStoredWifiSsid.c_str() : "(none)");
+}
+
+static bool saveWifiConfig(const String& ssid, const String& pass) {
+  if (!gPrefs.begin(CFG_NAMESPACE, false)) {
+    Serial.println(F("[CFG] NVS open failed for Wi-Fi save"));
+    return false;
+  }
+
+  gPrefs.putString("ssid", ssid);
+  gPrefs.putString("pass", pass);
+  gPrefs.end();
+
+  gStoredWifiSsid = ssid;
+  gStoredWifiPass = pass;
+  return true;
+}
+
+static bool saveVariantConfig(uint8_t variant) {
+  if (!gPrefs.begin(CFG_NAMESPACE, false)) {
+    Serial.println(F("[CFG] NVS open failed for variant save"));
+    return false;
+  }
+
+  gPrefs.putUChar("variant", variant);
+  gPrefs.end();
+  return true;
+}
+
+static bool saveAdminConfig(const String& uid, uint32_t wakeSec) {
+  const String paddedUid = padUid(uid);
+  if (wakeSec < 60u) wakeSec = 60u;
+  if (wakeSec > 36000u) wakeSec = 36000u;
+
+  if (!gPrefs.begin(CFG_NAMESPACE, false)) {
+    Serial.println(F("[CFG] NVS open failed for admin save"));
+    return false;
+  }
+
+  gPrefs.putString("uid", paddedUid);
+  gPrefs.putUInt("wake_sec", wakeSec);
+  gPrefs.end();
+
+  gStoredUid = paddedUid;
+  gStoredWakeSec = wakeSec;
+  return true;
+}
+
+// ============================================================
 //  BLE — send one line to phone
 // ============================================================
 void bleSend(const String& msg) {
   if (!gBleConnected || gTxChar == nullptr) return;
   gTxChar->setValue(msg.c_str());
   gTxChar->notify();
+}
+
+static void bleSendAdminConfig() {
+  bleSend("ADM_UID:" + gStoredUid);
+  bleSend("ADM_WAKE:" + String(gStoredWakeSec));
 }
 
 // ============================================================
@@ -325,6 +421,7 @@ void bleSendStatus() {
 class BleServerCB : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* s, NimBLEConnInfo& info) override {
     gBleConnected = true;
+    gAdminUnlocked = false;
     Serial.println(F("[BLE] Phone connected"));
     bleSendStatus();  // sync app with current device state on connect
     sendWifiListToBle(); // auto-send Wi-Fi list on connect
@@ -332,6 +429,7 @@ class BleServerCB : public NimBLEServerCallbacks {
   void onDisconnect(NimBLEServer* s, NimBLEConnInfo& info, int reason) override {
     gBleConnected    = false;
     gNeedsAdvRestart = true;
+    gAdminUnlocked   = false;
     Serial.printf("[BLE] Disconnected (reason %d)\n", reason);
   }
 };
@@ -366,9 +464,70 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
       int nl = payload.indexOf('\n');
       String ssid = (nl == -1) ? payload : payload.substring(0, nl);
       String pass = (nl == -1) ? "" : payload.substring(nl + 1);
-      Serial.printf("[WIFI] Received Credentials: SSID='%s' PASS='%s'\n", 
+      ssid.trim();
+      if (ssid.length() == 0) {
+        bleSend("ERR:SSID is required");
+        return;
+      }
+      if (!saveWifiConfig(ssid, pass)) {
+        bleSend("ERR:Wi-Fi save failed");
+        return;
+      }
+      Serial.printf("[WIFI] Saved Credentials: SSID='%s' PASS='%s'\n",
                     ssid.c_str(), pass.c_str());
       bleSend("WIFI:OK");
+      return;
+    }
+
+    if (cmd.startsWith("ADMIN_AUTH:")) {
+      String pass = cmd.substring(11);
+      pass.trim();
+      gAdminUnlocked = (pass == CFG_ADMIN_PASS);
+      bleSend(gAdminUnlocked ? "ADMIN:AUTH_OK" : "ADMIN:AUTH_FAIL");
+      return;
+    }
+
+    if (cmd.equalsIgnoreCase("ADMIN_GET")) {
+      if (!gAdminUnlocked) {
+        bleSend("ADMIN:LOCKED");
+        return;
+      }
+      bleSendAdminConfig();
+      return;
+    }
+
+    if (cmd.startsWith("ADMIN_SAVE:")) {
+      if (!gAdminUnlocked) {
+        bleSend("ADMIN:LOCKED");
+        return;
+      }
+
+      String payload = cmd.substring(11);
+      int nl = payload.indexOf('\n');
+      if (nl == -1) {
+        bleSend("ERR:ADMIN_SAVE format is UID\\nWAKE_SEC");
+        return;
+      }
+
+      String uid = payload.substring(0, nl);
+      String wakeRaw = payload.substring(nl + 1);
+      uid.trim();
+      wakeRaw.trim();
+      if (wakeRaw.length() == 0) {
+        bleSend("ERR:Wake interval is required");
+        return;
+      }
+
+      const uint32_t wakeSec = (uint32_t)wakeRaw.toInt();
+      if (!saveAdminConfig(uid, wakeSec)) {
+        bleSend("ERR:Admin save failed");
+        return;
+      }
+
+      Serial.printf("[ADMIN] Saved uid=%s wake=%lu sec\n",
+                    gStoredUid.c_str(), (unsigned long)gStoredWakeSec);
+      bleSend("ADMIN:SAVED");
+      bleSendAdminConfig();
       return;
     }
 
@@ -437,6 +596,12 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
     if (cmd.equalsIgnoreCase("save")) {
       Serial.printf("[NVS] Save requested — variant=%d (%s)  [NVS not yet implemented]\n",
                     acVariant, variantName(acVariant));
+      if (!saveVariantConfig(acVariant)) {
+        bleSend("ERR:Variant save failed");
+        return;
+      }
+      Serial.printf("[CFG] Saved variant=%d (%s)\n", acVariant, variantName(acVariant));
+      bleSend("SAVE:OK");
       bleSend("VAR:" + String(acVariant));   // echo back confirmation for now
       return;
     }
@@ -565,6 +730,7 @@ void setup() {
 
   assert(irutils::lowLevelSanityCheck() == 0);
   Serial.printf("\n" D_STR_IRRECVDUMP_STARTUP "\n", kRecvPin);
+  loadStoredConfig();
 
   // 1. Wi-Fi Scan (clean radio state)
   performWifiScan();

@@ -191,6 +191,59 @@ void IRsendRMT::_addSymbolPair(uint32_t markUs, uint32_t spaceUs) {
 void IRsendRMT::_flushBuffer() {
   if (_symCount == 0) return;
 
+#ifdef IRTX_DEBUG_PRINT
+  // ── TX frame dump ────────────────────────────────────────────────────────
+  // Printed as a C-style rawData[] array matching the IRremoteESP8266 format.
+  // 8 values per line, 5-char wide fields, no trailing comma.
+  // Split-space continuation symbols (level0=0) are accumulated back into one
+  // space value so the flat entry count matches what the receiver will see.
+  // Multi-section protocols (Samsung, Daikin…) produce one block per flush.
+
+  // Pass 1 — count flat entries so we can write "uint16_t rawData[N]" first.
+  uint16_t totalEntries = 0;
+  {
+    uint32_t ps = 0;
+    for (size_t i = 0; i < _symCount; i++) {
+      const rmt_symbol_word_t& s = _symbols[i];
+      if (s.level0 == 1) {
+        if (ps   > 0) { totalEntries++; ps = 0; }
+        if (s.duration0 > 0) totalEntries++;
+        ps = s.duration1;
+      } else {
+        ps += (uint32_t)s.duration0 + (uint32_t)s.duration1;
+      }
+    }
+    if (ps > 0) totalEntries++;
+  }
+
+  // Pass 2 — print values, 8 per line.
+  Serial.printf("\n[TX] freq=%uHz\n", _currentFreqHz);
+  Serial.printf("uint16_t rawData[%u] = {", totalEntries);
+  uint16_t idx     = 0;
+  uint32_t pendSpc = 0;
+
+  auto emitVal = [&](uint32_t v) {
+    if (idx % 8 == 0) Serial.printf("\n  ");
+    Serial.printf("%5u", v);
+    if (idx + 1 < totalEntries) Serial.printf(",");
+    idx++;
+  };
+
+  for (size_t i = 0; i < _symCount; i++) {
+    const rmt_symbol_word_t& s = _symbols[i];
+    if (s.level0 == 1) {
+      if (pendSpc > 0) { emitVal(pendSpc); pendSpc = 0; }
+      if (s.duration0 > 0) emitVal((uint32_t)s.duration0);
+      pendSpc = s.duration1;
+    } else {
+      pendSpc += (uint32_t)s.duration0 + (uint32_t)s.duration1;
+    }
+  }
+  if (pendSpc > 0) emitVal(pendSpc);
+  Serial.printf("};\n");
+  // ─────────────────────────────────────────────────────────────────────────
+#endif
+
   // rmt_copy_encoder ends transmission after exactly (_symCount * sizeof symbol)
   // bytes — no zero-sentinel is needed or wanted. Zeroing duration1 of the
   // last symbol would destroy inter-frame gaps (e.g. MITSUBISHI_AC uses a

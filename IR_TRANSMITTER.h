@@ -202,6 +202,13 @@ void Handle_AC(uint8_t t, const String& power) {
         else if (power == "OFF") { ac.setPower(false); }
         else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kMitsubishiAcCool); }
         irsend.sendMitsubishiAC(ac.getRaw(), kMitsubishiACStateLength, kMitsubishiACMinRepeat);
+        // kMitsubishiAcRptSpace = 15500µs < kRmtGapThresholdUs (36000µs) so
+        // _flushBuffer() is never triggered automatically.  Add a closing mark
+        // (gives receiver ISR the rising edge to latch the 15500µs trailing space)
+        // then space(36001) triggers the auto-flush.
+        // Constants are defined in ir_Mitsubishi.cpp (not exported) → hardcoded.
+        irsend.mark(440);    // kMitsubishiAcRptMark = 440µs
+        irsend.space(36001); // >= kRmtGapThresholdUs (36000µs) — flushes buffer to RMT HW
         delay(acSendDelay);
         break;
       }
@@ -257,6 +264,11 @@ void Handle_AC(uint8_t t, const String& power) {
         else if (power == "OFF") { ac.setPower(false); }
         else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kDaikinCool); }
         irsend.sendDaikin(ac.getRaw(), kDaikinStateLength, kDaikinDefaultRepeat);
+        // kDaikinGap = 29000µs — all 4 sections (preamble+3 data) now stay buffered
+        // together (29428µs < kRmtGapThresholdUs=36000µs) and transmit in one RMT burst.
+        // Closure mark gives receiver ISR rising edge to latch the trailing 29428µs space.
+        irsend.mark(kDaikinBitMark);  // 428µs — closes trailing gap in receiver rawData
+        irsend.space(36001);           // >= kRmtGapThresholdUs — flushes all sections to RMT HW
         delay(acSendDelay);
         break;
       }
@@ -268,6 +280,10 @@ void Handle_AC(uint8_t t, const String& power) {
         else if (power == "OFF") { ac.setPower(false); }
         else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kDaikinCool); }
         irsend.sendDaikin2(ac.getRaw(), kDaikin2StateLength, kDaikin2DefaultRepeat);
+        // kDaikin2Gap = 35204µs (kDaikin2LeaderMark+kDaikin2LeaderSpace) — leader + 2
+        // sections all buffered together (35204µs < kRmtGapThresholdUs=36000µs).
+        irsend.mark(kDaikin2BitMark);  // 460µs — closes trailing gap in receiver rawData
+        irsend.space(36001);            // >= kRmtGapThresholdUs — flushes all sections to RMT HW
         delay(acSendDelay);
         break;
       }
@@ -279,6 +295,9 @@ void Handle_AC(uint8_t t, const String& power) {
         else if (power == "OFF") { ac.setPowerToggle(true); }
         else                     { ac.setTemp(t); ac.setMode(kDaikin64Cool); }
         irsend.sendDaikin64(ac.getRaw(), kDaikin64Bits, kDaikin64DefaultRepeat);
+        // No manual flush needed — sendDaikin64 appends mark(kDaikin64HdrMark) then
+        // space(kDefaultMessageGap=100ms) after the data section. 100000µs >= 36000µs
+        // threshold → auto-flush fires, transmitting all sections in one RMT burst.
         delay(acSendDelay);
         break;
       }
@@ -290,6 +309,10 @@ void Handle_AC(uint8_t t, const String& power) {
         else if (power == "OFF") { ac.setPowerToggle(true); }
         else                     { ac.setTemp(t); ac.setMode(kDaikin128Cool); }
         irsend.sendDaikin128(ac.getRaw(), kDaikin128StateLength, kDaikin128DefaultRepeat);
+        // kDaikin128Gap = 20300µs — leaders + 2 sections all buffered together
+        // (20300µs < kRmtGapThresholdUs=36000µs) and transmit in one RMT burst.
+        irsend.mark(kDaikin128BitMark);  // 350µs — closes trailing gap in receiver rawData
+        irsend.space(36001);              // >= kRmtGapThresholdUs — flushes all sections to RMT HW
         delay(acSendDelay);
         break;
       }
@@ -301,6 +324,9 @@ void Handle_AC(uint8_t t, const String& power) {
         else if (power == "OFF") { ac.setPower(false); }
         else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kDaikinCool); }
         irsend.sendDaikin152(ac.getRaw(), kDaikin152StateLength, kDaikin152DefaultRepeat);
+        // kDaikin152Gap = 25182µs — leader + data section buffered together
+        irsend.mark(kDaikin152BitMark);  // 433µs — closes trailing gap in receiver rawData
+        irsend.space(36001);              // >= kRmtGapThresholdUs — flushes all sections to RMT HW
         delay(acSendDelay);
         break;
       }
@@ -312,6 +338,9 @@ void Handle_AC(uint8_t t, const String& power) {
         else if (power == "OFF") { ac.setPower(false); }
         else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kDaikinCool); }
         irsend.sendDaikin160(ac.getRaw(), kDaikin160StateLength, kDaikin160DefaultRepeat);
+        // kDaikin160Gap = 29650µs — 2 sections buffered together
+        irsend.mark(kDaikin160BitMark);  // 342µs — closes trailing gap in receiver rawData
+        irsend.space(36001);              // >= kRmtGapThresholdUs — flushes all sections to RMT HW
         delay(acSendDelay);
         break;
       }
@@ -323,6 +352,9 @@ void Handle_AC(uint8_t t, const String& power) {
         else if (power == "OFF") { ac.setPower(false); }
         else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kDaikin176Cool); }
         irsend.sendDaikin176(ac.getRaw(), kDaikin176StateLength, kDaikin176DefaultRepeat);
+        // kDaikin176Gap = 29410µs
+        irsend.mark(kDaikin176BitMark);  // 370µs — closes trailing gap in receiver rawData
+        irsend.space(36001);              // >= kRmtGapThresholdUs — flushes all sections to RMT HW
         delay(acSendDelay);
         break;
       }
@@ -334,6 +366,9 @@ void Handle_AC(uint8_t t, const String& power) {
         else if (power == "OFF") { ac.setPower(false); }
         else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kDaikinCool); }
         irsend.sendDaikin216(ac.getRaw(), kDaikin216StateLength, kDaikin216DefaultRepeat);
+        // kDaikin216Gap = 29650µs
+        irsend.mark(kDaikin216BitMark);  // 420µs — closes trailing gap in receiver rawData
+        irsend.space(36001);              // >= kRmtGapThresholdUs — flushes all sections to RMT HW
         delay(acSendDelay);
         break;
       }
@@ -930,7 +965,7 @@ void Handle_AC(uint8_t t, const String& power) {
         // Two problems with Trotec on the RMT path:
         //
         // 1. FLUSH: kTrotecGap (6184µs) and kTrotecHdrSpace (7364µs) are both
-        //    below kRmtGapThresholdUs (20000µs), so _flushBuffer() is never
+        //    below kRmtGapThresholdUs (36000µs), so _flushBuffer() is never
         //    triggered automatically by space().
         //
         // 2. RECEIVER ISR GAP: The IrTrace receiver ISR records a space only
@@ -940,18 +975,18 @@ void Handle_AC(uint8_t t, const String& power) {
         //    at 149 entries (rawlen=150). decodeTrotec() requires rawlen > 150
         //    and fails its minimum-length check at that value.
         //
-        // Fix for both: append one extra kTrotecBitMark + 20ms gap after
+        // Fix for both: append one extra kTrotecBitMark + flush gap after
         // sendTrotec().  The mark provides the rising-edge ISR trigger that
         // closes the kTrotecGapEnd space in rawData (rawData[149] ≈ 1524µs,
-        // matchAtLeast(1524, 1500) passes).  space(20001) >= kRmtGapThresholdUs
+        // matchAtLeast(1524, 1500) passes).  space(36001) >= kRmtGapThresholdUs
         // triggers the auto-flush, transmitting the complete frame + closure in
         // one RMT burst. The Trotec decoder returns true before examining the
         // extra mark entry.
-        // Note: kRmtGapThresholdUs was raised to 20000 µs (was 10000 µs) to
-        // fix Samsung AC (kSamsungAcHdrSpace = 17844 µs intra-frame). Trotec's
-        // explicit flush value updated from 10001 to 20001 accordingly.
-        irsend.mark(592);  // kTrotecBitMark — not exported from ir_Trotec.cpp
-        irsend.space(20001);  // >= kRmtGapThresholdUs — auto-flushes buffer
+        // Note: kRmtGapThresholdUs was raised to 36000 µs (was 20000 µs) to
+        // keep all Daikin inter-section gaps buffered. Trotec explicit flush
+        // value updated from 20001 to 36001 accordingly.
+        irsend.mark(592);    // kTrotecBitMark — not exported from ir_Trotec.cpp
+        irsend.space(36001); // >= kRmtGapThresholdUs (36000µs) — auto-flushes buffer
         delay(acSendDelay);
         break;
       }

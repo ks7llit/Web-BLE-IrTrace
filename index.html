@@ -246,6 +246,28 @@
   #inp-wifi-manual { width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-family: var(--mono); font-size: .8rem; background: var(--bg); outline: none; }
   #inp-wifi-manual:focus { border-color: var(--accent); background: #fff; }
 
+  /* â”€â”€ ADMIN CARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  .admin-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .admin-note {
+    font-family: var(--mono); font-size: .68rem; line-height: 1.6; color: var(--muted);
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+  }
+  .admin-fields { display: none; flex-direction: column; gap: 14px; }
+  .admin-input {
+    width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px;
+    font-family: var(--mono); font-size: .8rem; background: var(--bg); outline: none;
+  }
+  .admin-input:focus { border-color: var(--accent); background: #fff; }
+  .btn-admin {
+    flex: 1; padding: 11px; border: none; border-radius: 9px; font-family: var(--mono);
+    font-size: .75rem; font-weight: 700; cursor: pointer; transition: all .15s;
+  }
+  .btn-admin.unlock { background: #111827; color: #fff; }
+  .btn-admin.unlock:hover:not(:disabled) { background: #030712; }
+  .btn-admin.save { background: var(--red); color: #fff; }
+  .btn-admin.save:hover:not(:disabled) { background: #b91c1c; }
+  .btn-admin:disabled { opacity: .4; cursor: not-allowed; }
+
   /* ── LOG ────────────────────────────────────────────────── */
   .log-wrap { padding: 12px 16px; }
   #log { font-family: var(--mono); font-size: .71rem; line-height: 1.75; height: 180px; overflow-y: auto; }
@@ -363,6 +385,46 @@
   </div>
 
   <!-- ── PROTOCOL DISCOVERY ──────────────────────────────── -->
+  <div class="card" id="admin-card">
+    <div class="card-head">
+      <span class="card-label">Admin / Advanced</span>
+      <span class="pill pill-idle" id="admin-pill">Locked</span>
+    </div>
+    <div class="admin-body">
+      <div class="admin-note">
+        Unlock to edit the production-only fields used by the main firmware: device ID and wake interval.
+      </div>
+      <div class="wifi-row">
+        <label class="wifi-lbl">Admin Password</label>
+        <div class="pass-wrap">
+          <input type="password" id="inp-admin-pass" disabled placeholder="Enter current admin password...">
+          <button class="btn-eye" onclick="togglePass('inp-admin-pass')">
+            <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="wifi-actions">
+        <button class="btn-admin unlock" id="btn-admin-unlock" disabled onclick="unlockAdmin()">UNLOCK ADMIN</button>
+      </div>
+      <div class="admin-fields" id="admin-fields">
+        <div class="wifi-row">
+          <label class="wifi-lbl">Device ID (001-999)</label>
+          <input class="admin-input" id="inp-admin-uid" disabled inputmode="numeric" maxlength="3" placeholder="001">
+        </div>
+        <div class="wifi-row">
+          <label class="wifi-lbl">Wake Interval (minutes)</label>
+          <input class="admin-input" id="inp-admin-wake" disabled type="number" min="1" max="600" placeholder="10">
+        </div>
+        <div class="admin-note">
+          The device stores wake interval in seconds. This screen edits it in minutes to match the old admin flow.
+        </div>
+        <div class="wifi-actions">
+          <button class="btn-admin save" id="btn-admin-save" disabled onclick="saveAdmin()">SAVE ADMIN</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="card" id="discovery-card">
     <div class="card-head">
       <span class="card-label">Protocol Discovery</span>
@@ -726,6 +788,7 @@ let testTemp       = 24;
 let activeVariantId   = null;  // last variant sent via 'v <id>'
 let activeVariantName = '';
 let wifiList = [];
+let adminUnlocked = false;
 
 // ============================================================
 // BLE — Connect / Disconnect
@@ -763,6 +826,7 @@ async function onConnected() {
   document.getElementById('btn-label').textContent = 'Disconnect';
   setStrip('ok', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
   setControls(true);
+  resetAdminUi();
   setPill('ir-pill', 'pill pill-live', 'Live');
   addLog('sys', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
   
@@ -776,6 +840,7 @@ function onDisconnected() {
   document.getElementById('btn-label').textContent = 'Connect';
   setStrip('', 'Disconnected — tap Connect to reconnect');
   setControls(false);
+  resetAdminUi();
   setPill('ir-pill', 'pill pill-idle', 'Waiting');
   setPill('wifi-pill', 'pill pill-idle', 'Scan Ready');
   addLog('sys', 'Disconnected');
@@ -808,6 +873,22 @@ function onNotify(event) {
     case 'WIFI':
       if (val === 'OK') addLog('sys', '✅ Wi-Fi credentials saved on device');
       break;
+    case 'SAVE':
+      if (val === 'OK') addLog('sys', 'âœ… Protocol variant saved on device');
+      break;
+    case 'ADMIN':
+      handleAdminReply(val);
+      break;
+    case 'ADM_UID':
+      document.getElementById('inp-admin-uid').value = padUid(val);
+      break;
+    case 'ADM_WAKE': {
+      const wakeSec = parseInt(val, 10);
+      if (Number.isFinite(wakeSec) && wakeSec > 0) {
+        document.getElementById('inp-admin-wake').value = Math.max(1, Math.round(wakeSec / 60));
+      }
+      break;
+    }
     case 'ERR':
       addLog('err', val);
       break;
@@ -878,6 +959,90 @@ function onWifiSelectChange() {
 function togglePass(id) {
   const el = document.getElementById(id);
   el.type = (el.type === 'password') ? 'text' : 'password';
+}
+
+function padUid(raw) {
+  const digits = String(raw).replace(/\D/g, '');
+  let num = parseInt(digits || '1', 10);
+  if (num < 1) num = 1;
+  if (num > 999) num = 999;
+  return String(num).padStart(3, '0');
+}
+
+function syncAdminControls() {
+  const base = connected;
+  const edit = connected && adminUnlocked;
+  ['inp-admin-pass', 'btn-admin-unlock'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !base;
+  });
+  ['inp-admin-uid', 'inp-admin-wake', 'btn-admin-save'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !edit;
+  });
+}
+
+function setAdminUnlocked(on) {
+  adminUnlocked = on;
+  document.getElementById('admin-fields').style.display = on ? 'flex' : 'none';
+  setPill('admin-pill', on ? 'pill pill-live' : 'pill pill-idle', on ? 'Unlocked' : 'Locked');
+  syncAdminControls();
+}
+
+function resetAdminUi() {
+  document.getElementById('inp-admin-pass').value = '';
+  document.getElementById('inp-admin-uid').value = '';
+  document.getElementById('inp-admin-wake').value = '';
+  setAdminUnlocked(false);
+}
+
+function handleAdminReply(val) {
+  if (val === 'AUTH_OK') {
+    setAdminUnlocked(true);
+    addLog('sys', 'Admin section unlocked');
+    sendCmd('ADMIN_GET');
+    return;
+  }
+  if (val === 'AUTH_FAIL') {
+    setAdminUnlocked(false);
+    addLog('err', 'Admin password rejected');
+    return;
+  }
+  if (val === 'LOCKED') {
+    setAdminUnlocked(false);
+    addLog('err', 'Admin section is locked');
+    return;
+  }
+  if (val === 'SAVED') {
+    addLog('sys', 'âœ… Admin settings saved on device');
+  }
+}
+
+async function unlockAdmin() {
+  const pass = document.getElementById('inp-admin-pass').value.trim();
+  if (!pass) {
+    alert('Enter the admin password first');
+    return;
+  }
+  await sendCmd(`ADMIN_AUTH:${pass}`);
+}
+
+async function saveAdmin() {
+  if (!adminUnlocked) {
+    addLog('err', 'Admin section is locked');
+    return;
+  }
+
+  const uid = padUid(document.getElementById('inp-admin-uid').value.trim());
+  let wakeMin = parseInt(document.getElementById('inp-admin-wake').value, 10);
+  if (!Number.isFinite(wakeMin) || wakeMin < 1) wakeMin = 1;
+  if (wakeMin > 600) wakeMin = 600;
+
+  document.getElementById('inp-admin-uid').value = uid;
+  document.getElementById('inp-admin-wake').value = wakeMin;
+
+  addLog('sys', 'Saving admin settings...');
+  await sendCmd(`ADMIN_SAVE:${uid}\n${wakeMin * 60}`);
 }
 
 async function requestWifiScan() {
@@ -1107,13 +1272,15 @@ function setControls(on) {
   ['btn-raw-on','btn-raw-off','inp-send','btn-send',
    'btn-tminus','btn-tplus','sel-lookup','sel-universal',
    'lk-off','lk-on','lk-temp','un-off','un-on','un-temp',
-   'sel-wifi','inp-wifi-pass','btn-wifi-rescan','btn-wifi-save']
+   'sel-wifi','inp-wifi-pass','btn-wifi-rescan','btn-wifi-save',
+   'inp-admin-pass','btn-admin-unlock']
     .forEach(id => { const e = document.getElementById(id); if (e) e.disabled = !on; });
 
   if (!on) {
     // Reset lookup buttons state to be safe
     setLookupButtons(false);
   }
+  syncAdminControls();
 }
 
 function setStrip(type, msg) {
@@ -1163,6 +1330,8 @@ function esc(s) {
     sel.appendChild(opt);
   });
 })();
+
+resetAdminUi();
 
 // Web Bluetooth support check
 if (!navigator.bluetooth) {
