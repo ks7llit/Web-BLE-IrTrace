@@ -880,9 +880,11 @@ function onNotify(event) {
       handleAdminReply(val);
       break;
     case 'ADM_UID':
+      setAdminUnlocked(true);
       document.getElementById('inp-admin-uid').value = padUid(val);
       break;
     case 'ADM_WAKE': {
+      setAdminUnlocked(true);
       const wakeSec = parseInt(val, 10);
       if (Number.isFinite(wakeSec) && wakeSec > 0) {
         document.getElementById('inp-admin-wake').value = Math.max(1, Math.round(wakeSec / 60));

@@ -141,6 +141,11 @@ String                gStoredUid      = CFG_DEFAULT_UID;
 uint32_t              gStoredWakeSec  = CFG_DEFAULT_WAKE_SEC;
 String                gStoredWifiSsid = "";
 String                gStoredWifiPass = "";
+static const uint8_t  BLE_NOTIFY_QUEUE_LEN = 24;
+String                gBleNotifyQueue[BLE_NOTIFY_QUEUE_LEN];
+uint8_t               gBleNotifyHead = 0;
+uint8_t               gBleNotifyTail = 0;
+unsigned long         gBleNextNotifyMs = 0;
 
 // ============================================================
 //  WIFI SCAN — top 10 networks
@@ -395,8 +400,26 @@ static bool saveAdminConfig(const String& uid, uint32_t wakeSec) {
 // ============================================================
 void bleSend(const String& msg) {
   if (!gBleConnected || gTxChar == nullptr) return;
+  const uint8_t nextTail = (uint8_t)((gBleNotifyTail + 1U) % BLE_NOTIFY_QUEUE_LEN);
+  if (nextTail == gBleNotifyHead) {
+    Serial.printf("[BLE TX] Drop (queue full): %s\n", msg.c_str());
+    return;
+  }
+  gBleNotifyQueue[gBleNotifyTail] = msg;
+  gBleNotifyTail = nextTail;
+}
+
+static void pumpBleNotifications() {
+  if (!gBleConnected || gTxChar == nullptr) return;
+  if (gBleNotifyHead == gBleNotifyTail) return;
+  if ((long)(millis() - gBleNextNotifyMs) < 0) return;
+
+  const String msg = gBleNotifyQueue[gBleNotifyHead];
+  gBleNotifyHead = (uint8_t)((gBleNotifyHead + 1U) % BLE_NOTIFY_QUEUE_LEN);
   gTxChar->setValue(msg.c_str());
   gTxChar->notify();
+  gBleNextNotifyMs = millis() + 15UL;
+  Serial.printf("[BLE TX] %s\n", msg.c_str());
 }
 
 static void bleSendAdminConfig() {
@@ -422,6 +445,9 @@ class BleServerCB : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* s, NimBLEConnInfo& info) override {
     gBleConnected = true;
     gAdminUnlocked = false;
+    gBleNotifyHead = 0;
+    gBleNotifyTail = 0;
+    gBleNextNotifyMs = millis() + 300UL;
     Serial.println(F("[BLE] Phone connected"));
     bleSendStatus();  // sync app with current device state on connect
     sendWifiListToBle(); // auto-send Wi-Fi list on connect
@@ -430,6 +456,8 @@ class BleServerCB : public NimBLEServerCallbacks {
     gBleConnected    = false;
     gNeedsAdvRestart = true;
     gAdminUnlocked   = false;
+    gBleNotifyHead   = 0;
+    gBleNotifyTail   = 0;
     Serial.printf("[BLE] Disconnected (reason %d)\n", reason);
   }
 };
@@ -484,6 +512,9 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
       pass.trim();
       gAdminUnlocked = (pass == CFG_ADMIN_PASS);
       bleSend(gAdminUnlocked ? "ADMIN:AUTH_OK" : "ADMIN:AUTH_FAIL");
+      if (gAdminUnlocked) {
+        bleSendAdminConfig();
+      }
       return;
     }
 
@@ -754,6 +785,7 @@ void setup() {
 //  loop()
 // ============================================================
 void loop() {
+  pumpBleNotifications();
 
   // Handle Wi-Fi scan request (Live Re-scan)
   if (gWifiScanPending) {
