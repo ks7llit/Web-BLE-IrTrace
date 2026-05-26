@@ -188,11 +188,19 @@ static bool       gWifiSendPending = false;
 
 void performWifiScan() {
   Serial.println(F("[WIFI] Starting scan..."));
+  setLedBase(LED_WIFI_SCAN);   // fast blink while scanning
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
-  delay(100);
 
-  int n = WiFi.scanNetworks();
+  // Non-blocking 100ms settle — keep pumping LED so it actually blinks
+  { unsigned long t = millis(); while ((long)(millis() - t) < 100L) pumpLed(); }
+
+  // Async scan — poll so pumpLed() runs throughout (works in setup() too)
+  WiFi.scanNetworks(/*async=*/true);
+  while (WiFi.scanComplete() == WIFI_SCAN_RUNNING) pumpLed();
+
+  int n = WiFi.scanComplete();
+  if (n < 0) n = 0;   // WIFI_SCAN_FAILED → treat as 0 networks
   Serial.printf("[WIFI] Scan done. Found %d networks.\n", n);
 
   if (n <= 0) {
@@ -914,9 +922,9 @@ void sendDecodedToBle(const decode_results* r) {
 //  setup()
 // ============================================================
 void setup() {
-  // Status LED — solid ON immediately to show device is alive
+  // Status LED — start OFF; performWifiScan() will set LED_WIFI_SCAN and blink
   pinMode(STATUS_LED_PIN, OUTPUT);
-  digitalWrite(STATUS_LED_PIN, STATUS_LED_ON);
+  digitalWrite(STATUS_LED_PIN, LOW);
 
   // IR TX pin — drive LOW at boot, prevents floating GPIO5
   pinMode(kIrLed, OUTPUT);
@@ -969,7 +977,8 @@ void loop() {
   // Handle Wi-Fi scan request (Live Re-scan)
   if (gWifiScanPending) {
     gWifiScanPending = false;
-    performWifiScan();
+    performWifiScan();                                              // sets LED_WIFI_SCAN internally
+    setLedBase(gBleConnected ? LED_BLE_CONN : LED_BLE_ADV);  // restore state after scan
     sendWifiListToBle();
   }
 
