@@ -190,17 +190,6 @@
   /* Section divider */
   .section-divider { height: 1px; background: var(--border); }
 
-  /* Submit button */
-  .btn-submit {
-    width: 100%; padding: 13px;
-    border: none; border-radius: 10px;
-    font-family: var(--mono); font-size: .82rem; font-weight: 700;
-    background: var(--accent); color: #fff;
-    cursor: pointer; transition: background .15s; letter-spacing: .03em;
-  }
-  .btn-submit:hover    { background: #003fa3; }
-  .btn-submit:disabled { background: #d1d5db; cursor: not-allowed; }
-
   /* ── FIND RX BUTTON ─────────────────────────────────────── */
   .btn-find {
     width: 100%; padding: 12px; border-radius: 9px;
@@ -224,6 +213,45 @@
     text-align: center; letter-spacing: .04em; padding: 2px 0;
     transition: opacity .2s;
   }
+
+  /* ── SAVE CONFIGURATION CARD ────────────────────────────── */
+  .save-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+  .save-checklist { display: flex; flex-direction: column; gap: 8px; }
+
+  .check-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; border-radius: 8px;
+    background: var(--surface2); border: 1px solid var(--border);
+    font-family: var(--mono); font-size: .73rem;
+    transition: background .2s, border-color .2s;
+  }
+  .check-item .chk-icon { font-size: .95rem; flex-shrink: 0; width: 18px; text-align: center; }
+  .check-item .chk-lbl  { color: var(--muted); }
+  .check-item.ready     { background: var(--green-lt); border-color: #86efac; }
+  .check-item.ready .chk-lbl { color: var(--green); font-weight: 700; }
+  .check-item.missing   { background: var(--red-lt); border-color: #fca5a5; animation: chk-shake .35s ease; }
+  .check-item.missing .chk-lbl { color: var(--red); font-weight: 600; }
+
+  @keyframes chk-shake {
+    0%,100% { transform: translateX(0); }
+    20%     { transform: translateX(-5px); }
+    60%     { transform: translateX(5px); }
+    80%     { transform: translateX(-3px); }
+  }
+
+  .btn-save-all {
+    width: 100%; padding: 15px;
+    border: none; border-radius: 10px;
+    font-family: var(--mono); font-size: .88rem; font-weight: 700;
+    background: var(--accent); color: #fff;
+    cursor: pointer; transition: background .15s; letter-spacing: .04em;
+    box-shadow: 0 2px 8px rgba(0,82,204,.22);
+  }
+  .btn-save-all:hover:not(:disabled) { background: #003fa3; }
+  .btn-save-all:disabled { background: #d1d5db; cursor: not-allowed; box-shadow: none; }
+  .btn-save-all.saving  { background: var(--orange); box-shadow: none; }
+  .btn-save-all.success { background: var(--green);  box-shadow: none; }
 
   /* No-candidate notice */
   .no-candidate {
@@ -389,7 +417,7 @@
           <option value="-1">Scanning for networks...</option>
         </select>
         <div id="wifi-manual-wrap">
-          <input id="inp-wifi-manual" placeholder="Enter Hidden SSID...">
+          <input id="inp-wifi-manual" placeholder="Enter Hidden SSID..." oninput="updateSaveChecklist()">
         </div>
       </div>
       <div class="wifi-row">
@@ -402,8 +430,7 @@
         </div>
       </div>
       <div class="wifi-actions">
-        <button class="btn-wifi rescan" id="btn-wifi-rescan" disabled onclick="requestWifiScan()">RE-SCAN</button>
-        <button class="btn-wifi save"   id="btn-wifi-save"   disabled onclick="submitWifi()">SAVE WIFI</button>
+        <button class="btn-wifi rescan" id="btn-wifi-rescan" disabled onclick="requestWifiScan()">🔄 RE-SCAN</button>
       </div>
     </div>
   </div>
@@ -509,11 +536,6 @@
         <button class="btn-test temp" id="un-temp" disabled onclick="testSection('universal','temp')">SET TEMP</button>
       </div>
 
-      <!-- Submit -->
-      <button class="btn-submit" id="btn-submit" disabled onclick="submitProtocol()">
-        ✅ SUBMIT — Protocol Confirmed
-      </button>
-
       <!-- ── Find AC Receiver ─────────────────────────────── -->
       <div class="section-divider"></div>
       <button class="btn-find" id="btn-find-rx" disabled onclick="toggleFindRx()">
@@ -523,6 +545,29 @@
         ● Scanning — sweep blaster slowly across AC face
       </div>
 
+    </div>
+  </div>
+
+  <!-- ── SAVE CONFIGURATION ─────────────────────────────── -->
+  <div class="card" id="save-card">
+    <div class="card-head">
+      <span class="card-label">Save Configuration</span>
+      <span class="pill pill-idle" id="save-pill">Pending</span>
+    </div>
+    <div class="save-body">
+      <div class="save-checklist">
+        <div class="check-item" id="chk-wifi">
+          <span class="chk-icon">○</span>
+          <span class="chk-lbl" id="chk-wifi-lbl">Wi-Fi network — not selected</span>
+        </div>
+        <div class="check-item" id="chk-proto">
+          <span class="chk-icon">○</span>
+          <span class="chk-lbl" id="chk-proto-lbl">IR protocol — not tested yet</span>
+        </div>
+      </div>
+      <button class="btn-save-all" id="btn-save-all" disabled onclick="submitAll()">
+        💾 SAVE ALL — Configure Device
+      </button>
     </div>
   </div>
 
@@ -823,6 +868,8 @@ let activeVariantName = '';
 let wifiList = [];
 let adminUnlocked = false;
 let findRxActive  = false;     // find-receiver mode state
+let wifiReady     = false;     // checklist: WiFi SSID is selected
+let protoReady    = false;     // checklist: protocol has been tested
 
 // ============================================================
 // BLE — Connect / Disconnect
@@ -862,6 +909,7 @@ async function onConnected() {
   setControls(true);
   resetAdminUi();
   setFindRxState(false);   // reset find mode UI on every connect
+  updateSaveChecklist();   // reset checklist state
   document.getElementById('discovery-card').style.display = 'block';
   setPill('ir-pill', 'pill pill-live', 'Live');
   addLog('sys', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
@@ -878,6 +926,7 @@ function onDisconnected() {
   setControls(false);
   resetAdminUi();
   setFindRxState(false);   // reset find mode UI on disconnect
+  updateSaveChecklist();   // reflect disconnected state
   setPill('ir-pill', 'pill pill-idle', 'Waiting');
   setPill('wifi-pill', 'pill pill-idle', 'Scan Ready');
   addLog('sys', 'Disconnected');
@@ -998,6 +1047,7 @@ function onWifiSelectChange() {
   const sel = document.getElementById('sel-wifi');
   const manualWrap = document.getElementById('wifi-manual-wrap');
   manualWrap.style.display = (sel.value === 'manual') ? 'block' : 'none';
+  updateSaveChecklist();
 }
 
 function togglePass(id) {
@@ -1094,20 +1144,121 @@ async function requestWifiScan() {
   await sendCmd('wscan');
 }
 
-async function submitWifi() {
+// ============================================================
+// Save checklist — updates dynamically as user fills in details
+// ============================================================
+function updateSaveChecklist() {
+  // ── Determine WiFi readiness ──────────────────────────────
+  const sel      = document.getElementById('sel-wifi');
+  const manualEl = document.getElementById('inp-wifi-manual');
+  let ssid = '';
+  if (sel && sel.value === 'manual') {
+    ssid = (manualEl ? manualEl.value.trim() : '');
+  } else if (sel && parseInt(sel.value) >= 0 && wifiList.length > 0) {
+    ssid = (wifiList[parseInt(sel.value)] || {}).ssid || '';
+  }
+  wifiReady  = ssid.length > 0;
+  protoReady = activeVariantId !== null;
+
+  // ── Update WiFi check item ────────────────────────────────
+  const chkWifi    = document.getElementById('chk-wifi');
+  const chkWifiLbl = document.getElementById('chk-wifi-lbl');
+  if (chkWifi) {
+    chkWifi.classList.toggle('ready', wifiReady);
+    if (!wifiReady) chkWifi.classList.remove('missing');
+    chkWifi.querySelector('.chk-icon').textContent = wifiReady ? '✅' : '○';
+    if (chkWifiLbl) chkWifiLbl.textContent = wifiReady
+      ? 'Wi-Fi: ' + ssid
+      : 'Wi-Fi network — not selected';
+  }
+
+  // ── Update Protocol check item ────────────────────────────
+  const chkProto    = document.getElementById('chk-proto');
+  const chkProtoLbl = document.getElementById('chk-proto-lbl');
+  if (chkProto) {
+    chkProto.classList.toggle('ready', protoReady);
+    if (!protoReady) chkProto.classList.remove('missing');
+    chkProto.querySelector('.chk-icon').textContent = protoReady ? '✅' : '○';
+    if (chkProtoLbl) chkProtoLbl.textContent = protoReady
+      ? 'Protocol: ' + activeVariantName
+      : 'IR protocol — not tested yet';
+  }
+
+  // ── Save pill ─────────────────────────────────────────────
+  const allReady = wifiReady && protoReady;
+  setPill('save-pill',
+    allReady ? 'pill pill-live' : 'pill pill-idle',
+    allReady ? 'Ready' : 'Pending');
+}
+
+// ============================================================
+// submitAll — single submit for WiFi + Protocol
+// ============================================================
+async function submitAll() {
+  if (!connected) return;
+
+  // ── Validation ────────────────────────────────────────────
+  let hasError = false;
+
+  if (!wifiReady) {
+    const el = document.getElementById('chk-wifi');
+    if (el) {
+      el.classList.remove('missing'); void el.offsetWidth;  // re-trigger animation
+      el.classList.add('missing');
+      el.querySelector('.chk-icon').textContent = '❌';
+    }
+    hasError = true;
+  }
+
+  if (!protoReady) {
+    const el = document.getElementById('chk-proto');
+    if (el) {
+      el.classList.remove('missing'); void el.offsetWidth;
+      el.classList.add('missing');
+      el.querySelector('.chk-icon').textContent = '❌';
+    }
+    hasError = true;
+  }
+
+  if (hasError) {
+    addLog('err', 'Fill in all required fields before saving');
+    return;
+  }
+
+  // ── Collect values ────────────────────────────────────────
   const sel = document.getElementById('sel-wifi');
   let ssid = '';
   if (sel.value === 'manual') {
     ssid = document.getElementById('inp-wifi-manual').value.trim();
-  } else if (sel.value >= 0) {
-    ssid = wifiList[sel.value].ssid;
+  } else {
+    ssid = wifiList[parseInt(sel.value)].ssid;
   }
-
-  if (!ssid) { alert('Please select or enter a Wi-Fi SSID'); return; }
   const pass = document.getElementById('inp-wifi-pass').value;
 
-  addLog('sys', 'Sending Wi-Fi credentials...');
+  // ── Submit UI ─────────────────────────────────────────────
+  const btn = document.getElementById('btn-save-all');
+  if (btn) { btn.disabled = true; btn.classList.add('saving'); btn.textContent = '⏳ Saving...'; }
+
+  // ── Send commands in sequence ─────────────────────────────
+  addLog('sys', 'Saving Wi-Fi credentials...');
   await sendCmd(`WIFI_SET:${ssid}\n${pass}`);
+
+  addLog('sys', 'Saving IR protocol variant...');
+  await sendCmd('save');
+
+  // ── Success ───────────────────────────────────────────────
+  addLog('sys', '✅ Device configured — WiFi + Protocol saved');
+  setPill('save-pill', 'pill pill-live', 'Saved ✅');
+  if (btn) {
+    btn.classList.remove('saving');
+    btn.classList.add('success');
+    btn.textContent = '✅ Configuration Saved!';
+    setTimeout(() => {
+      btn.classList.remove('success');
+      btn.textContent = '💾 SAVE ALL — Configure Device';
+      btn.disabled = false;
+    }, 3000);
+  }
 }
 
 // ============================================================
@@ -1235,26 +1386,14 @@ async function testSection(section, action) {
   await sendCmd('v ' + varId);
   await sendCmd(cmd);
 
-  // Track active variant (for SUBMIT)
+  // Track active variant — updates checklist and enables Save All
   activeVariantId   = varId;
   activeVariantName = name;
   document.getElementById('active-name').textContent = name;
   document.getElementById('active-tag').style.display = 'block';
-  document.getElementById('btn-submit').disabled = false;
+  updateSaveChecklist();
 
   addLog('sys', 'Testing: ' + name + ' — ' + cmd);
-}
-
-// ============================================================
-// SUBMIT — protocol confirmed (NVS save — placeholder)
-// ============================================================
-async function submitProtocol() {
-  if (activeVariantId === null) return;
-  // Placeholder: sends 'save' command — firmware will handle when NVS is implemented
-  await sendCmd('save');
-  addLog('sys', '✅ Protocol confirmed: [' + activeVariantId + '] ' + activeVariantName);
-  document.getElementById('btn-submit').textContent = '✅ Saved — ' + activeVariantName;
-  document.getElementById('btn-submit').disabled = true;
 }
 
 // ============================================================
@@ -1353,8 +1492,8 @@ function setControls(on) {
   ['btn-raw-on','btn-raw-off','inp-send','btn-send',
    'btn-tminus','btn-tplus','sel-lookup','sel-universal',
    'lk-off','lk-on','lk-temp','un-off','un-on','un-temp',
-   'sel-wifi','inp-wifi-pass','btn-wifi-rescan','btn-wifi-save',
-   'inp-admin-pass','btn-admin-unlock','btn-find-rx']
+   'sel-wifi','inp-wifi-pass','inp-wifi-manual','btn-wifi-rescan',
+   'inp-admin-pass','btn-admin-unlock','btn-find-rx','btn-save-all']
     .forEach(id => { const e = document.getElementById(id); if (e) e.disabled = !on; });
 
   if (!on) {
