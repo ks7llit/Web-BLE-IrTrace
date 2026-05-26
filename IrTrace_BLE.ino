@@ -114,10 +114,15 @@
 // Must be defined BEFORE including IR_TRANSMITTER.h
 #define STATUS_LED_PIN  10
 #define STATUS_LED_ON   HIGH
+
+// Pending flags — set from ISR/callback context, consumed by pumpLed() in loop()
+static bool gLedIrPending     = false;  // set by led_ir_burst(), triggers IR overlay
+static bool gLedSubmitPending = false;  // set on config save, triggers submit overlay
+
+// Called by Handle_AC() (inside IR_TRANSMITTER.h) on every IR burst.
+// Must keep this exact signature. No delay() — flag pumpLed() instead.
 void led_ir_burst() {
-  digitalWrite(STATUS_LED_PIN, STATUS_LED_ON);
-  delay(40);
-  digitalWrite(STATUS_LED_PIN, LOW);
+  gLedIrPending = true;
 }
 
 // ── IR_TRANSMITTER.h ─────────────────────────────────────────
@@ -153,6 +158,18 @@ uint8_t               gBleNotifyTail = 0;
 unsigned long         gBleNextNotifyMs = 0;
 bool                  gFindRxActive    = false;  // find-receiver mode flag
 unsigned long         gFindRxNextMs    = 0;       // next scheduled find-mode TX
+
+// ── LED state machine ─────────────────────────────────────────
+// Base states (persistent — loop continuously)
+enum LedBase    : uint8_t { LED_WIFI_SCAN, LED_BLE_ADV, LED_BLE_CONN, LED_FIND_RX };
+// Overlay states (one-shot — run once, then return to base)
+enum LedOverlay : uint8_t { LED_OVL_NONE, LED_OVL_IR, LED_OVL_SUBMIT };
+
+static LedBase       gLedBase     = LED_WIFI_SCAN; // current base state
+static LedOverlay    gLedOverlay  = LED_OVL_NONE;  // active overlay (or NONE)
+static uint8_t       gLedOvlStep  = 0;             // overlay animation step counter
+static uint8_t       gLedBaseStep = 0;             // base pattern step counter
+static unsigned long gLedNextMs   = 0;             // next LED update timestamp
 
 // ============================================================
 //  WIFI SCAN — top 10 networks
@@ -429,6 +446,124 @@ static void pumpBleNotifications() {
   Serial.printf("[BLE TX] %s\n", msg.c_str());
 }
 
+// ============================================================
+//  LED state machine — non-blocking, called from loop() only
+//
+//  Two-layer design:
+//    Base state  → persistent pattern for current device mode
+//    Overlay     → one-shot event animation (IR / submit success)
+//                  overlays return to base state when done
+//
+//  setLedBase() is safe to call from BLE callbacks — it only
+//  writes plain variables, never touches GPIO directly.
+// ============================================================
+static void setLedBase(LedBase newBase) {
+  if (gLedBase == newBase) return;
+  gLedBase     = newBase;
+  gLedBaseStep = 0;
+  // Only reset timer if no overlay is running so we don't cut it short
+  if (gLedOverlay == LED_OVL_NONE) gLedNextMs = 0;
+}
+
+static void pumpLed() {
+  // ── Start overlay if pending (submit takes priority over IR) ──
+  if (gLedOverlay == LED_OVL_NONE) {
+    if (gLedSubmitPending) {
+      gLedSubmitPending = false;
+      gLedOverlay  = LED_OVL_SUBMIT;
+      gLedOvlStep  = 0;
+      gLedNextMs   = 0;
+    } else if (gLedIrPending) {
+      gLedIrPending = false;
+      gLedOverlay  = LED_OVL_IR;
+      gLedOvlStep  = 0;
+      gLedNextMs   = 0;
+    }
+  }
+
+  if ((long)(millis() - gLedNextMs) < 0) return;  // not yet time
+
+  // ── IR overlay: 3 × flash (60 ms ON / 60 ms OFF) ─────────────
+  if (gLedOverlay == LED_OVL_IR) {
+    if (gLedOvlStep < 6) {
+      digitalWrite(STATUS_LED_PIN, (gLedOvlStep % 2 == 0) ? STATUS_LED_ON : LOW);
+      gLedNextMs = millis() + 60UL;
+      gLedOvlStep++;
+    } else {
+      // Overlay done — resume base state immediately
+      gLedOverlay  = LED_OVL_NONE;
+      gLedBaseStep = 0;
+      gLedNextMs   = 0;
+    }
+    return;
+  }
+
+  // ── Submit overlay: 5 × rapid flash (80 ms) + 500 ms solid ───
+  if (gLedOverlay == LED_OVL_SUBMIT) {
+    if (gLedOvlStep < 10) {
+      // Steps 0-9: 5 pairs of ON/OFF (even = ON, odd = OFF)
+      digitalWrite(STATUS_LED_PIN, (gLedOvlStep % 2 == 0) ? STATUS_LED_ON : LOW);
+      gLedNextMs = millis() + 80UL;
+      gLedOvlStep++;
+    } else if (gLedOvlStep == 10) {
+      // Step 10: hold solid ON for 500 ms
+      digitalWrite(STATUS_LED_PIN, STATUS_LED_ON);
+      gLedNextMs = millis() + 500UL;
+      gLedOvlStep++;
+    } else {
+      // Overlay done — resume base state immediately
+      gLedOverlay  = LED_OVL_NONE;
+      gLedBaseStep = 0;
+      gLedNextMs   = 0;
+    }
+    return;
+  }
+
+  // ── Base state patterns ───────────────────────────────────────
+  switch (gLedBase) {
+
+    case LED_WIFI_SCAN:
+      // Fast blink: 150 ms ON / 150 ms OFF
+      digitalWrite(STATUS_LED_PIN, (gLedBaseStep % 2 == 0) ? STATUS_LED_ON : LOW);
+      gLedNextMs = millis() + 150UL;
+      gLedBaseStep++;
+      break;
+
+    case LED_BLE_ADV:
+      // Heartbeat: 200 ms ON / 800 ms OFF
+      if (gLedBaseStep % 2 == 0) {
+        digitalWrite(STATUS_LED_PIN, STATUS_LED_ON);
+        gLedNextMs = millis() + 200UL;
+      } else {
+        digitalWrite(STATUS_LED_PIN, LOW);
+        gLedNextMs = millis() + 800UL;
+      }
+      gLedBaseStep++;
+      break;
+
+    case LED_BLE_CONN:
+      // Solid ON — re-affirm every 250 ms in case overlay left it off
+      digitalWrite(STATUS_LED_PIN, STATUS_LED_ON);
+      gLedNextMs = millis() + 250UL;
+      break;
+
+    case LED_FIND_RX:
+      // Double-tap + long gap — 3 s total cycle matches IR firing rate
+      // Step %4 == 0: ON  80 ms
+      // Step %4 == 1: OFF 80 ms
+      // Step %4 == 2: ON  80 ms
+      // Step %4 == 3: OFF 2760 ms   (80+80+80+2760 = 3000 ms)
+      switch (gLedBaseStep % 4) {
+        case 0: digitalWrite(STATUS_LED_PIN, STATUS_LED_ON); gLedNextMs = millis() +   80UL; break;
+        case 1: digitalWrite(STATUS_LED_PIN, LOW);           gLedNextMs = millis() +   80UL; break;
+        case 2: digitalWrite(STATUS_LED_PIN, STATUS_LED_ON); gLedNextMs = millis() +   80UL; break;
+        case 3: digitalWrite(STATUS_LED_PIN, LOW);           gLedNextMs = millis() + 2760UL; break;
+      }
+      gLedBaseStep++;
+      break;
+  }
+}
+
 static void bleSendAdminConfig() {
   bleSend("ADM_UID:" + gStoredUid);
   bleSend("ADM_WAKE:" + String(gStoredWakeSec));
@@ -456,6 +591,7 @@ class BleServerCB : public NimBLEServerCallbacks {
     gBleNotifyTail = 0;
     gBleNextNotifyMs = millis() + 300UL;
     Serial.println(F("[BLE] Phone connected"));
+    setLedBase(LED_BLE_CONN);  // solid ON — user is now in config mode
     bleSendStatus();        // sync app with current device state on connect
     gWifiSendPending = true; // send Wi-Fi list from loop(), not from callback
   }
@@ -466,6 +602,7 @@ class BleServerCB : public NimBLEServerCallbacks {
     gFindRxActive    = false;   // stop find mode on disconnect
     gBleNotifyHead   = 0;
     gBleNotifyTail   = 0;
+    setLedBase(LED_BLE_ADV);    // back to heartbeat — advertising again
     Serial.printf("[BLE] Disconnected (reason %d)\n", reason);
   }
 };
@@ -512,6 +649,7 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
       Serial.printf("[WIFI] Saved Credentials: SSID='%s' PASS='%s'\n",
                     ssid.c_str(), pass.c_str());
       bleSend("WIFI:OK");
+      gLedSubmitPending = true;  // trigger success overlay
       return;
     }
 
@@ -566,6 +704,7 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
       Serial.printf("[ADMIN] Saved uid=%s wake=%lu sec\n",
                     gStoredUid.c_str(), (unsigned long)gStoredWakeSec);
       bleSend("ADMIN:SAVED");
+      gLedSubmitPending = true;  // trigger success overlay
       bleSendAdminConfig();
       return;
     }
@@ -574,12 +713,14 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
     if (cmd.equalsIgnoreCase("FIND_RX:ON")) {
       gFindRxActive = true;
       gFindRxNextMs = millis();    // fire immediately on first cycle
+      setLedBase(LED_FIND_RX);     // double-tap pattern synced to IR cadence
       bleSend("FIND_RX:ON");
       Serial.println(F("[FIND] Receiver-hunt mode ON"));
       return;
     }
     if (cmd.equalsIgnoreCase("FIND_RX:OFF")) {
       gFindRxActive = false;
+      setLedBase(LED_BLE_CONN);    // back to solid ON — still connected
       bleSend("FIND_RX:OFF");
       Serial.println(F("[FIND] Receiver-hunt mode OFF"));
       return;
@@ -656,6 +797,7 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
       }
       Serial.printf("[CFG] Saved variant=%d (%s)\n", acVariant, variantName(acVariant));
       bleSend("SAVE:OK");
+      gLedSubmitPending = true;  // trigger success overlay
       bleSend("VAR:" + String(acVariant));   // echo back confirmation for now
       return;
     }
@@ -771,9 +913,9 @@ void sendDecodedToBle(const decode_results* r) {
 //  setup()
 // ============================================================
 void setup() {
-  // Status LED
+  // Status LED — solid ON immediately to show device is alive
   pinMode(STATUS_LED_PIN, OUTPUT);
-  digitalWrite(STATUS_LED_PIN, LOW);
+  digitalWrite(STATUS_LED_PIN, STATUS_LED_ON);
 
   // IR TX pin — drive LOW at boot, prevents floating GPIO5
   pinMode(kIrLed, OUTPUT);
@@ -791,11 +933,12 @@ void setup() {
   Serial.printf("\n" D_STR_IRRECVDUMP_STARTUP "\n", kRecvPin);
   loadStoredConfig();
 
-  // 1. Wi-Fi Scan (clean radio state)
+  // 1. Wi-Fi Scan — LED stays solid ON (loop not running yet, can't animate)
   performWifiScan();
 
-  // 2. BLE Setup
+  // 2. BLE Setup — after this, loop() takes over and animates LED
   setupBle();
+  setLedBase(LED_BLE_ADV);  // heartbeat: advertising, waiting for connection
 
 #if DECODE_HASH
   irrecv.setUnknownThreshold(kMinUnknownSize);
@@ -813,6 +956,7 @@ void setup() {
 //  loop()
 // ============================================================
 void loop() {
+  pumpLed();              // LED state machine — always first, never blocks
   pumpBleNotifications();
 
   // Send cached Wi-Fi list to newly connected phone (deferred from onConnect)
