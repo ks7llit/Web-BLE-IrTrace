@@ -201,6 +201,30 @@
   .btn-submit:hover    { background: #003fa3; }
   .btn-submit:disabled { background: #d1d5db; cursor: not-allowed; }
 
+  /* ── FIND RX BUTTON ─────────────────────────────────────── */
+  .btn-find {
+    width: 100%; padding: 12px; border-radius: 9px;
+    border: 1.5px solid var(--border);
+    font-family: var(--mono); font-size: .78rem; font-weight: 700;
+    background: var(--surface2); color: var(--muted);
+    cursor: pointer; transition: all .2s; letter-spacing: .04em;
+  }
+  .btn-find:disabled { opacity: .35; cursor: not-allowed; }
+  .btn-find.scanning {
+    background: var(--orange-lt); color: var(--orange);
+    border-color: #fde68a;
+    animation: find-pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes find-pulse {
+    0%,100% { box-shadow: 0 0 0 0   rgba(217,119,6,.35); }
+    50%      { box-shadow: 0 0 0 7px rgba(217,119,6,.0);  }
+  }
+  .find-hint {
+    font-family: var(--mono); font-size: .65rem; color: var(--orange);
+    text-align: center; letter-spacing: .04em; padding: 2px 0;
+    transition: opacity .2s;
+  }
+
   /* No-candidate notice */
   .no-candidate {
     font-family: var(--mono); font-size: .7rem; color: var(--orange);
@@ -489,6 +513,15 @@
       <button class="btn-submit" id="btn-submit" disabled onclick="submitProtocol()">
         ✅ SUBMIT — Protocol Confirmed
       </button>
+
+      <!-- ── Find AC Receiver ─────────────────────────────── -->
+      <div class="section-divider"></div>
+      <button class="btn-find" id="btn-find-rx" disabled onclick="toggleFindRx()">
+        📡 FIND AC RECEIVER
+      </button>
+      <div class="find-hint" id="find-rx-hint" style="display:none;">
+        ● Scanning — sweep blaster slowly across AC face
+      </div>
 
     </div>
   </div>
@@ -789,6 +822,7 @@ let activeVariantId   = null;  // last variant sent via 'v <id>'
 let activeVariantName = '';
 let wifiList = [];
 let adminUnlocked = false;
+let findRxActive  = false;     // find-receiver mode state
 
 // ============================================================
 // BLE — Connect / Disconnect
@@ -827,9 +861,11 @@ async function onConnected() {
   setStrip('ok', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
   setControls(true);
   resetAdminUi();
+  setFindRxState(false);   // reset find mode UI on every connect
+  document.getElementById('discovery-card').style.display = 'block';
   setPill('ir-pill', 'pill pill-live', 'Live');
   addLog('sys', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
-  
+
   // Request Wi-Fi list if not already sent
   await sendCmd('wget');
 }
@@ -841,6 +877,7 @@ function onDisconnected() {
   setStrip('', 'Disconnected — tap Connect to reconnect');
   setControls(false);
   resetAdminUi();
+  setFindRxState(false);   // reset find mode UI on disconnect
   setPill('ir-pill', 'pill pill-idle', 'Waiting');
   setPill('wifi-pill', 'pill pill-idle', 'Scan Ready');
   addLog('sys', 'Disconnected');
@@ -891,6 +928,11 @@ function onNotify(event) {
       }
       break;
     }
+    case 'FIND_RX':
+      if (val === 'ON')    { setFindRxState(true);  break; }
+      if (val === 'OFF')   { setFindRxState(false); break; }
+      if (val === 'PULSE') { flashFindPulse();       break; }
+      break;
     case 'ERR':
       addLog('err', val);
       break;
@@ -1216,6 +1258,43 @@ async function submitProtocol() {
 }
 
 // ============================================================
+// Find AC Receiver — toggle find mode on/off
+// ============================================================
+async function toggleFindRx() {
+  if (!connected) return;
+  if (findRxActive) {
+    await sendCmd('FIND_RX:OFF');
+  } else {
+    // Sync currently selected variant to firmware before starting
+    const varId = parseInt(document.getElementById('sel-universal').value);
+    if (varId >= 0) await sendCmd('v ' + varId);
+    await sendCmd('FIND_RX:ON');
+  }
+}
+
+function setFindRxState(on) {
+  findRxActive = on;
+  const btn  = document.getElementById('btn-find-rx');
+  const hint = document.getElementById('find-rx-hint');
+  if (!btn) return;
+  if (on) {
+    btn.classList.add('scanning');
+    btn.textContent = '⏹ STOP FIND RX';
+  } else {
+    btn.classList.remove('scanning');
+    btn.textContent = '📡 FIND AC RECEIVER';
+  }
+  if (hint) hint.style.display = on ? 'block' : 'none';
+}
+
+function flashFindPulse() {
+  const hint = document.getElementById('find-rx-hint');
+  if (!hint || !findRxActive) return;
+  hint.style.opacity = '0.3';
+  setTimeout(() => { if (findRxActive) hint.style.opacity = '1'; }, 200);
+}
+
+// ============================================================
 // Temperature control (shared between both sections)
 // ============================================================
 function adjustTemp(delta) {
@@ -1275,7 +1354,7 @@ function setControls(on) {
    'btn-tminus','btn-tplus','sel-lookup','sel-universal',
    'lk-off','lk-on','lk-temp','un-off','un-on','un-temp',
    'sel-wifi','inp-wifi-pass','btn-wifi-rescan','btn-wifi-save',
-   'inp-admin-pass','btn-admin-unlock']
+   'inp-admin-pass','btn-admin-unlock','btn-find-rx']
     .forEach(id => { const e = document.getElementById(id); if (e) e.disabled = !on; });
 
   if (!on) {

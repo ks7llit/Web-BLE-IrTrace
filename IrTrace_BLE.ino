@@ -30,11 +30,16 @@
  *   wscan       Trigger live Wi-Fi scan
  *   wget        Request current Wi-Fi list
  *   WIFI_SET:<SSID>\n<PASS>  Receive Wi-Fi credentials
+ *   FIND_RX:ON  Start find-receiver mode (fires t 24 every 3 s)
+ *   FIND_RX:OFF Stop find-receiver mode
  *
  * ── BLE Replies (ESP32 → Phone) ─────────────────────────────
  *   TX:OK              IR sent successfully
  *   NET:X:SSID:RSSI:S  Wi-Fi scan result line
  *   WIFI:OK            Credentials received
+ *   FIND_RX:ON         Find-receiver mode started
+ *   FIND_RX:OFF        Find-receiver mode stopped
+ *   FIND_RX:PULSE      IR fired in find mode (replaces TX:OK during find)
  *   ... (other standard replies)
  * ============================================================
  */
@@ -146,6 +151,8 @@ String                gBleNotifyQueue[BLE_NOTIFY_QUEUE_LEN];
 uint8_t               gBleNotifyHead = 0;
 uint8_t               gBleNotifyTail = 0;
 unsigned long         gBleNextNotifyMs = 0;
+bool                  gFindRxActive    = false;  // find-receiver mode flag
+unsigned long         gFindRxNextMs    = 0;       // next scheduled find-mode TX
 
 // ============================================================
 //  WIFI SCAN — top 10 networks
@@ -159,6 +166,7 @@ struct ScannedNet {
 static ScannedNet gWifiList[10];
 static uint8_t    gWifiCount = 0;
 static bool       gWifiScanPending = false;
+static bool       gWifiSendPending = false;
 
 void performWifiScan() {
   Serial.println(F("[WIFI] Starting scan..."));
@@ -212,7 +220,6 @@ void sendWifiListToBle() {
                  String(gWifiList[i].rssi) + ":" +
                  ((gWifiList[i].encryption == WIFI_AUTH_OPEN) ? "Open" : "Secured");
     bleSend(msg);
-    delay(20); 
   }
   bleSend("NET:DONE");
 }
@@ -449,13 +456,14 @@ class BleServerCB : public NimBLEServerCallbacks {
     gBleNotifyTail = 0;
     gBleNextNotifyMs = millis() + 300UL;
     Serial.println(F("[BLE] Phone connected"));
-    bleSendStatus();  // sync app with current device state on connect
-    sendWifiListToBle(); // auto-send Wi-Fi list on connect
+    bleSendStatus();        // sync app with current device state on connect
+    gWifiSendPending = true; // send Wi-Fi list from loop(), not from callback
   }
   void onDisconnect(NimBLEServer* s, NimBLEConnInfo& info, int reason) override {
     gBleConnected    = false;
     gNeedsAdvRestart = true;
     gAdminUnlocked   = false;
+    gFindRxActive    = false;   // stop find mode on disconnect
     gBleNotifyHead   = 0;
     gBleNotifyTail   = 0;
     Serial.printf("[BLE] Disconnected (reason %d)\n", reason);
@@ -559,6 +567,21 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
                     gStoredUid.c_str(), (unsigned long)gStoredWakeSec);
       bleSend("ADMIN:SAVED");
       bleSendAdminConfig();
+      return;
+    }
+
+    // ── FIND_RX:ON / FIND_RX:OFF  find-receiver mode ─────
+    if (cmd.equalsIgnoreCase("FIND_RX:ON")) {
+      gFindRxActive = true;
+      gFindRxNextMs = millis();    // fire immediately on first cycle
+      bleSend("FIND_RX:ON");
+      Serial.println(F("[FIND] Receiver-hunt mode ON"));
+      return;
+    }
+    if (cmd.equalsIgnoreCase("FIND_RX:OFF")) {
+      gFindRxActive = false;
+      bleSend("FIND_RX:OFF");
+      Serial.println(F("[FIND] Receiver-hunt mode OFF"));
       return;
     }
 
@@ -706,9 +729,14 @@ void executeTx() {
   if      (gTxJob.power == "ON")  acPower = true;
   else if (gTxJob.power == "OFF") acPower = false;
 
-  bleSend("TX:OK");
-  bleSend("PWR:"  + String(acPower ? "ON" : "OFF"));
-  bleSend("TEMP:" + String(gTxJob.temp));
+  // In find mode send a single pulse heartbeat — keeps the log clean
+  if (gFindRxActive) {
+    bleSend("FIND_RX:PULSE");
+  } else {
+    bleSend("TX:OK");
+    bleSend("PWR:"  + String(acPower ? "ON" : "OFF"));
+    bleSend("TEMP:" + String(gTxJob.temp));
+  }
 }
 
 // ============================================================
@@ -787,6 +815,12 @@ void setup() {
 void loop() {
   pumpBleNotifications();
 
+  // Send cached Wi-Fi list to newly connected phone (deferred from onConnect)
+  if (gWifiSendPending) {
+    gWifiSendPending = false;
+    sendWifiListToBle();
+  }
+
   // Handle Wi-Fi scan request (Live Re-scan)
   if (gWifiScanPending) {
     gWifiScanPending = false;
@@ -803,6 +837,15 @@ void loop() {
 
   // Execute queued TX — always before IR decode, always in loop()
   executeTx();
+
+  // Find-receiver mode — queue t 24 every 3 s, only when TX slot is free
+  if (gFindRxActive && !gTxJob.pending &&
+      (long)(millis() - gFindRxNextMs) >= 0) {
+    gTxJob.temp    = 24;
+    gTxJob.power   = "";          // temperature only — no power toggle
+    gTxJob.pending = true;
+    gFindRxNextMs  = millis() + 3000UL;
+  }
 
   // IR decode — IRrecvDumpV3 core logic
   if (irrecv.decode(&results)) {

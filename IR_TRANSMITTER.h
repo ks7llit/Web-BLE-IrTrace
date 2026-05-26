@@ -291,8 +291,14 @@ void Handle_AC(uint8_t t, const String& power) {
     // ── 7: Daikin 64-bit (toggle protocol) ───────────────────
     case AC_DAIKIN64: {
         IRDaikin64 ac(kIrLed);
+        // BUG FIX (Bug #17): Daikin64 is a toggle-style protocol — setPowerToggle(true)
+        // signals "change power state" for both ON and OFF commands.  The original OFF
+        // branch omitted setTemp() and setMode(), so the temperature field was taken
+        // from stateReset() defaults (minimum = 16°C) instead of the requested setpoint.
+        // The AC unit needs valid temp+mode even in toggle-off frames.
+        // Fix: mirror the ON branch in the OFF branch (same setters, same toggle bit).
         if      (power == "ON")  { ac.setPowerToggle(true); ac.setTemp(t); ac.setMode(kDaikin64Cool); }
-        else if (power == "OFF") { ac.setPowerToggle(true); }
+        else if (power == "OFF") { ac.setPowerToggle(true); ac.setTemp(t); ac.setMode(kDaikin64Cool); }
         else                     { ac.setTemp(t); ac.setMode(kDaikin64Cool); }
         irsend.sendDaikin64(ac.getRaw(), kDaikin64Bits, kDaikin64DefaultRepeat);
         // No manual flush needed — sendDaikin64 appends mark(kDaikin64HdrMark) then
@@ -305,8 +311,11 @@ void Handle_AC(uint8_t t, const String& power) {
     // ── 8: Daikin 128-bit (toggle protocol) ──────────────────
     case AC_DAIKIN128: {
         IRDaikin128 ac(kIrLed);
+        // BUG FIX (Bug #17): same toggle-protocol issue as V7.  stateReset() leaves
+        // Mode=0 (UNKNOWN) and Temp=0°C.  Without setTemp()+setMode() in the OFF
+        // branch the receiver decodes Mode: 0 (UNKNOWN), Temp: 0°C for every OFF frame.
         if      (power == "ON")  { ac.setPowerToggle(true); ac.setTemp(t); ac.setMode(kDaikin128Cool); }
-        else if (power == "OFF") { ac.setPowerToggle(true); }
+        else if (power == "OFF") { ac.setPowerToggle(true); ac.setTemp(t); ac.setMode(kDaikin128Cool); }
         else                     { ac.setTemp(t); ac.setMode(kDaikin128Cool); }
         irsend.sendDaikin128(ac.getRaw(), kDaikin128StateLength, kDaikin128DefaultRepeat);
         // kDaikin128Gap = 20300µs — leaders + 2 sections all buffered together
@@ -325,6 +334,7 @@ void Handle_AC(uint8_t t, const String& power) {
         else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kDaikinCool); }
         irsend.sendDaikin152(ac.getRaw(), kDaikin152StateLength, kDaikin152DefaultRepeat);
         // kDaikin152Gap = 25182µs — leader + data section buffered together
+        // (25182µs < kRmtGapThresholdUs=36000µs) and transmit in one RMT burst.
         irsend.mark(kDaikin152BitMark);  // 433µs — closes trailing gap in receiver rawData
         irsend.space(36001);              // >= kRmtGapThresholdUs — flushes all sections to RMT HW
         delay(acSendDelay);
@@ -339,6 +349,7 @@ void Handle_AC(uint8_t t, const String& power) {
         else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kDaikinCool); }
         irsend.sendDaikin160(ac.getRaw(), kDaikin160StateLength, kDaikin160DefaultRepeat);
         // kDaikin160Gap = 29650µs — 2 sections buffered together
+        // (29650µs < kRmtGapThresholdUs=36000µs) and transmit in one RMT burst.
         irsend.mark(kDaikin160BitMark);  // 342µs — closes trailing gap in receiver rawData
         irsend.space(36001);              // >= kRmtGapThresholdUs — flushes all sections to RMT HW
         delay(acSendDelay);
@@ -352,7 +363,8 @@ void Handle_AC(uint8_t t, const String& power) {
         else if (power == "OFF") { ac.setPower(false); }
         else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kDaikin176Cool); }
         irsend.sendDaikin176(ac.getRaw(), kDaikin176StateLength, kDaikin176DefaultRepeat);
-        // kDaikin176Gap = 29410µs
+        // kDaikin176Gap = 29410µs — 2 sections buffered together
+        // (29410µs < kRmtGapThresholdUs=36000µs) and transmit in one RMT burst.
         irsend.mark(kDaikin176BitMark);  // 370µs — closes trailing gap in receiver rawData
         irsend.space(36001);              // >= kRmtGapThresholdUs — flushes all sections to RMT HW
         delay(acSendDelay);
@@ -366,7 +378,8 @@ void Handle_AC(uint8_t t, const String& power) {
         else if (power == "OFF") { ac.setPower(false); }
         else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kDaikinCool); }
         irsend.sendDaikin216(ac.getRaw(), kDaikin216StateLength, kDaikin216DefaultRepeat);
-        // kDaikin216Gap = 29650µs
+        // kDaikin216Gap = 29650µs — 2 sections buffered together
+        // (29650µs < kRmtGapThresholdUs=36000µs) and transmit in one RMT burst.
         irsend.mark(kDaikin216BitMark);  // 420µs — closes trailing gap in receiver rawData
         irsend.space(36001);              // >= kRmtGapThresholdUs — flushes all sections to RMT HW
         delay(acSendDelay);
@@ -380,6 +393,14 @@ void Handle_AC(uint8_t t, const String& power) {
         else if (power == "OFF") { ac.setPower(false); }
         else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kFujitsuAcModeCool); }
         irsend.sendFujitsuAC(ac.getRaw(), ac.getStateLength(), kFujitsuAcMinRepeat);
+        // kFujitsuAcMinGap = 8100µs < kRmtGapThresholdUs (36000µs) → no auto-flush.
+        // Without an explicit flush the frame stays buffered indefinitely; on the
+        // next protocol's sendXxx() call the stale Fujitsu frame transmits first,
+        // then the intended protocol follows — corrupting both decode results.
+        // Constants kFujitsuAcBitMark and kFujitsuAcMinGap are defined in
+        // ir_Fujitsu.cpp only (not exported) → hardcoded numeric values here.
+        irsend.mark(448);    // kFujitsuAcBitMark = 448µs — closes trailing gap in receiver rawData
+        irsend.space(36001); // >= kRmtGapThresholdUs (36000µs) — flushes frame to RMT HW
         delay(acSendDelay);
         break;
       }
@@ -398,10 +419,22 @@ void Handle_AC(uint8_t t, const String& power) {
     // ── 15: Panasonic 32-bit (toggle) ────────────────────────
     case AC_PANASONIC32: {
         IRPanasonicAc32 ac(kIrLed);
+        // BUG FIX (Bug #17): same toggle-protocol issue as V7/V8.  stateReset()
+        // defaults leave Temp=16°C (minimum).  OFF branch must include setTemp()+
+        // setMode() so the transmitted frame carries the correct setpoint.
         if      (power == "ON")  { ac.setPowerToggle(true); ac.setTemp(t); ac.setMode(kPanasonicAc32Cool); }
-        else if (power == "OFF") { ac.setPowerToggle(true); }
+        else if (power == "OFF") { ac.setPowerToggle(true); ac.setTemp(t); ac.setMode(kPanasonicAc32Cool); }
         else                     { ac.setTemp(t); ac.setMode(kPanasonicAc32Cool); }
         irsend.sendPanasonicAC32(ac.getRaw(), kPanasonicAc32Bits, kPanasonicAcDefaultRepeat);
+        // kPanasonicAc32SectionGap = 13946µs < kRmtGapThresholdUs (36000µs) → no auto-flush.
+        // sendPanasonicAC32() sends 2 sections; each section footer ends with
+        // space(kPanasonicAc32SectionGap=13946µs). Neither triggers auto-flush, so both
+        // sections accumulate in the buffer and are never transmitted — identical stale-buffer
+        // bug to V13 Fujitsu (kFujitsuAcMinGap=8100µs).
+        // kPanasonicAc32BitMark and kPanasonicAc32SectionGap are defined in ir_Panasonic.cpp
+        // only (not exported) → hardcoded numeric values here.
+        irsend.mark(920);    // kPanasonicAc32BitMark = 920µs — closes trailing section gap in receiver rawData
+        irsend.space(36001); // >= kRmtGapThresholdUs (36000µs) — flushes both sections to RMT HW
         delay(acSendDelay);
         break;
       }
@@ -455,9 +488,17 @@ void Handle_AC(uint8_t t, const String& power) {
     // ── 19: Hitachi AC1 104-bit ──────────────────────────────
     case AC_HITACHI_AC1: {
         IRHitachiAc1 ac(kIrLed);
-        if      (power == "ON")  { ac.setPower(true);    ac.setTemp(t); ac.setMode(kHitachiAc1Cool); }
+        // BUG FIX: IRHitachiAc1::stateReset() initialises _.Mode = kHitachiAc1Auto (0xE1
+        // at byte 5, high nibble = 14). IRHitachiAc1::setTemp() has an early return:
+        //   if (_.Mode == kHitachiAc1Auto) return;  // Can't change temp in Auto mode.
+        // Calling setTemp() BEFORE setMode() means the object is still in Auto at that
+        // point → setTemp() silently discards every temperature write → the Temp field
+        // stays at the reset-state Auto temperature (kHitachiAc1TempAuto = 25°C) for
+        // every ON command regardless of what temperature was requested.
+        // Fix: call setMode() first to exit Auto, then setTemp() succeeds.
+        if      (power == "ON")  { ac.setPower(true);    ac.setMode(kHitachiAc1Cool); ac.setTemp(t); }
         else if (power == "OFF") { ac.setPower(false); }
-        else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kHitachiAc1Cool); }
+        else                     { ac.setPower(acPower); ac.setMode(kHitachiAc1Cool); ac.setTemp(t); }
         irsend.sendHitachiAC1(ac.getRaw(), kHitachiAc1StateLength, kHitachiAcDefaultRepeat);
         delay(acSendDelay);
         break;
@@ -502,7 +543,29 @@ void Handle_AC(uint8_t t, const String& power) {
         if      (power == "ON")  { ac.setPower(true);    ac.setTemp(t); ac.setMode(kHitachiAc424Cool); }
         else if (power == "OFF") { ac.setPower(false); }
         else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kHitachiAc424Cool); }
+        // BUG FIX (Bug #11): sendHitachiAc424() starts with a leader section whose
+        // space is kHitachiAc424LdrSpace = 49,290 µs.  This exceeds kRmtGapThresholdUs
+        // (36,000 µs), which would normally trigger _flushBuffer() immediately after
+        // the leader — splitting the frame into two separate RMT bursts.  The receiver
+        // then sees the ~29ms leader mark as LUTRON, and the 424-bit payload as
+        // HITACHI_AC2, never as HITACHI_AC424.
+        //
+        // Fix: suppress auto-flush for the duration of the send, then call
+        // flushTx() explicitly.  kDefaultMessageGap (100,000 µs) is emitted
+        // by sendGeneric INSIDE sendHitachiAc424 while the flag is still true,
+        // so it cannot auto-flush.  flushTx() dispatches the complete
+        // leader + payload in one RMT burst after the flag is restored.
+        //
+        // This is protocol-specific — kRmtGapThresholdUs is NOT changed.
+        irsend.suppressAutoFlush(true);
         irsend.sendHitachiAc424(ac.getRaw(), kHitachiAc424StateLength, kHitachiAcDefaultRepeat);
+        irsend.suppressAutoFlush(false);
+        // IMPORTANT: kDefaultMessageGap (100,000 µs) is emitted by sendGeneric
+        // INSIDE sendHitachiAc424(), while suppressAutoFlush is still true — so
+        // the auto-flush that would normally fire for that gap is silently skipped.
+        // The complete leader + payload is left sitting in the buffer.
+        // flushTx() dispatches it to RMT hardware now.
+        irsend.flushTx();
         delay(acSendDelay);
         break;
       }
@@ -514,6 +577,11 @@ void Handle_AC(uint8_t t, const String& power) {
         else if (power == "OFF") { ac.setPower(false); }
         else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kToshibaAcCool); }
         irsend.sendToshibaAC(ac.getRaw(), kToshibaACStateLength, kToshibaACMinRepeat);
+        // BUG FIX: sendToshibaAC uses kToshibaAcUsualGap = 7,400 µs as its
+        // trailing gap — well below kRmtGapThresholdUs (36,000 µs), so
+        // space() never auto-flushes.  Explicit mark+space forces the flush.
+        irsend.mark(580);                  // kToshibaAcBitMark = 580 µs — defined in ir_Toshiba.cpp only, not exported in header
+        irsend.space(36001);               // > 36,000 µs threshold → _flushBuffer()
         delay(acSendDelay);
         break;
       }
@@ -568,7 +636,26 @@ void Handle_AC(uint8_t t, const String& power) {
         if      (power == "ON")  { ac.setPower(true);    ac.setTemp(t); ac.setMode(kKelvinatorCool); }
         else if (power == "OFF") { ac.setPower(false); }
         else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kKelvinatorCool); }
+        // BUG FIX (Bug #16): sendKelvinator() sends the 128-bit message as 4 sections:
+        //   CmdBlock#1 + Footer#1 (gap=kKelvinatorGapSpace=19,975µs)  ← below threshold ✓
+        //   DataBlock#1          (gap=kKelvinatorGapSpace×2=39,950µs) ← ABOVE 36,000µs → PREMATURE FLUSH
+        //   CmdBlock#2 + Footer#2 (gap=kKelvinatorGapSpace=19,975µs)  ← below threshold ✓
+        //   DataBlock#2          (gap=kKelvinatorGapSpace×2=39,950µs) ← ABOVE threshold → end-frame flush
+        // The 39,950µs gap after DataBlock#1 triggers auto-flush mid-frame, splitting the
+        // 128-bit sequence into two 64-bit RMT bursts. Each half resembles a valid Gree
+        // frame (Kelvinator and Gree share the same block structure) → receiver decodes
+        // each burst as GREE, never as KELVINATOR.
+        //
+        // Fix: same suppressAutoFlush pattern as V23 (Bug #11, Hitachi AC424).
+        // Suppress auto-flush for the entire send so the 39,950µs intra-frame gap does
+        // NOT trigger _flushBuffer(). Then call flushTx() explicitly — the 39,950µs
+        // end-of-frame gap also fires while the flag is true (inside sendKelvinator),
+        // so it too is suppressed and the complete 128-bit frame is dispatched in one
+        // RMT burst by flushTx().
+        irsend.suppressAutoFlush(true);
         irsend.sendKelvinator(ac.getRaw(), kKelvinatorStateLength, kKelvinatorDefaultRepeat);
+        irsend.suppressAutoFlush(false);
+        irsend.flushTx();   // dispatch complete 128-bit frame in one RMT burst
         delay(acSendDelay);
         break;
       }
@@ -576,10 +663,21 @@ void Handle_AC(uint8_t t, const String& power) {
     // ── 30: Gree 64-bit ──────────────────────────────────────
     case AC_GREE: {
         IRGreeAC ac(kIrLed);
-        if      (power == "ON")  { ac.setPower(true);    ac.setTemp(t); ac.setMode(kGreeCool); }
+        // BUG FIX (Bug #14): stateReset() initialises Mode=kGreeAuto. setTemp()
+        // has a forced override: if (_.Mode == kGreeAuto) safecelsius = 25.
+        // setMode(kGreeAuto) also calls setTemp(25) internally.
+        // Must call setMode() BEFORE setTemp() so the Auto guard is cleared first.
+        if      (power == "ON")  { ac.setPower(true);    ac.setMode(kGreeCool); ac.setTemp(t); }
         else if (power == "OFF") { ac.setPower(false); }
-        else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kGreeCool); }
+        else                     { ac.setPower(acPower); ac.setMode(kGreeCool); ac.setTemp(t); }
         irsend.sendGree(ac.getRaw(), kGreeStateLength, kGreeDefaultRepeat);
+        // BUG FIX: Gree is a two-section protocol. sendGree() calls sendGeneric()
+        // three times — Block#1 (gap=0), Footer#1 (gap=kGreeMsgSpace=19,980 µs),
+        // Block#2 (gap=kGreeMsgSpace=19,980 µs).  All gaps are below
+        // kRmtGapThresholdUs (36,000 µs), so space() never auto-flushes.
+        // Explicit mark+space forces the flush.
+        irsend.mark(620);            // kGreeBitMark = 620 µs — defined in ir_Gree.cpp only, not exported in header
+        irsend.space(36001);          // > 36,000 µs threshold → _flushBuffer()
         delay(acSendDelay);
         break;
       }
@@ -587,9 +685,26 @@ void Handle_AC(uint8_t t, const String& power) {
     // ── 31: Midea 48-bit ─────────────────────────────────────
     case AC_MIDEA: {
         IRMideaAC ac(kIrLed);
-        if      (power == "ON")  { ac.setPower(true);    ac.setTemp(t); ac.setMode(kMideaACCool); }
+        // BUG FIX (Bug #18): Two compounding problems:
+        //
+        // 1. SETTER ORDER — setMode(kMideaACCool) was called AFTER setTemp().
+        //    IRMideaAC::setMode() internally modifies the temperature/Fahrenheit
+        //    state, overwriting whatever setTemp() wrote — identical root cause
+        //    to Bug #14 (Gree) and Bug #15 (Sharp).
+        //
+        // 2. FAHRENHEIT FLAG — after setMode() overwrites the temp state,
+        //    UseFahrenheit=1 and Temp=0 (Fahrenheit minimum).  setTemp(t)
+        //    called without an explicit Celsius flag leaves the Fahrenheit bit
+        //    set by whatever state setMode() wrote.  Since 24 and 28 are both
+        //    below the Fahrenheit minimum (kMideaACMinTempF=62°F), BOTH get
+        //    clamped to 62°F = 17°C — making ON 24°C and ON 28°C produce
+        //    identical frames.
+        //
+        // Fix: call setMode() first, then setTemp(t, false) with explicit
+        //      Celsius flag to override the Fahrenheit default left by setMode().
+        if      (power == "ON")  { ac.setPower(true);    ac.setMode(kMideaACCool); ac.setTemp(t, false); }
         else if (power == "OFF") { ac.setPower(false); }
-        else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kMideaACCool); }
+        else                     { ac.setPower(acPower); ac.setMode(kMideaACCool); ac.setTemp(t, false); }
         irsend.sendMidea(ac.getRaw(), kMideaBits, kMideaMinRepeat);
         delay(acSendDelay);
         break;
@@ -597,13 +712,15 @@ void Handle_AC(uint8_t t, const String& power) {
 
     // ── 32: Midea 24-bit ─────────────────────────────────────
     // NOTE: IRMideaAC::send() always calls sendMidea() (48-bit protocol), not
-    // sendMidea24(). Both variants 35 and 36 use the same TX path. The "24-bit"
+    // sendMidea24(). Both variants 31 and 32 use the same TX path. The "24-bit"
     // label refers to the AC unit model family, not the on-wire protocol.
     case AC_MIDEA24: {
         IRMideaAC ac(kIrLed);
-        if      (power == "ON")  { ac.setPower(true);    ac.setTemp(t); ac.setMode(kMideaACCool); }
+        // BUG FIX (Bug #18): same setter-order + Fahrenheit-flag issue as V31.
+        // See V31 (AC_MIDEA) comment above for full root-cause analysis.
+        if      (power == "ON")  { ac.setPower(true);    ac.setMode(kMideaACCool); ac.setTemp(t, false); }
         else if (power == "OFF") { ac.setPower(false); }
-        else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kMideaACCool); }
+        else                     { ac.setPower(acPower); ac.setMode(kMideaACCool); ac.setTemp(t, false); }
         irsend.sendMidea(ac.getRaw(), kMideaBits, kMideaMinRepeat);
         delay(acSendDelay);
         break;
@@ -648,9 +765,13 @@ void Handle_AC(uint8_t t, const String& power) {
     // ── 36: Sharp 104-bit ────────────────────────────────────
     case AC_SHARP: {
         IRSharpAc ac(kIrLed);
-        if      (power == "ON")  { ac.setPower(true);    ac.setTemp(t); ac.setMode(kSharpAcCool); }
+        // BUG FIX (Bug #15): stateReset() initialises Mode=kSharpAcAuto. setTemp()
+        // guard: case kSharpAcAuto → _.raw[kSharpAcByteTemp]=0; return; (t discarded).
+        // getTemp() = _.Temp + kSharpAcMinTemp = 0 + 15 = 15°C always.
+        // Must call setMode() BEFORE setTemp() so the Auto guard is cleared first.
+        if      (power == "ON")  { ac.setPower(true);    ac.setMode(kSharpAcCool); ac.setTemp(t); }
         else if (power == "OFF") { ac.setPower(false); }
-        else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kSharpAcCool); }
+        else                     { ac.setPower(acPower); ac.setMode(kSharpAcCool); ac.setTemp(t); }
         irsend.sendSharpAc(ac.getRaw(), kSharpAcStateLength, kSharpAcDefaultRepeat);
         delay(acSendDelay);
         break;
@@ -659,8 +780,11 @@ void Handle_AC(uint8_t t, const String& power) {
     // ── 37: Whirlpool 168-bit (toggle) ───────────────────────
     case AC_WHIRLPOOL: {
         IRWhirlpoolAc ac(kIrLed);
+        // BUG FIX (Bug #17): toggle-style protocol — same root cause as V7/V8/V15.
+        // OFF branch must include setTemp()+setMode() so the frame carries the
+        // correct setpoint instead of stateReset() defaults.
         if      (power == "ON")  { ac.setPowerToggle(true); ac.setTemp(t); ac.setMode(kWhirlpoolAcCool); }
-        else if (power == "OFF") { ac.setPowerToggle(true); }
+        else if (power == "OFF") { ac.setPowerToggle(true); ac.setTemp(t); ac.setMode(kWhirlpoolAcCool); }
         else                     { ac.setTemp(t); ac.setMode(kWhirlpoolAcCool); }
         irsend.sendWhirlpoolAC(ac.getRaw(), kWhirlpoolAcStateLength, kWhirlpoolAcDefaultRepeat);
         delay(acSendDelay);
@@ -776,6 +900,16 @@ void Handle_AC(uint8_t t, const String& power) {
         else if (power == "OFF") { ac.setPower(false); }
         else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kAmcorCool); }
         irsend.sendAmcor(ac.getRaw(), kAmcorStateLength, kAmcorDefaultRepeat);
+        // kAmcorGap = 34300µs < kRmtGapThresholdUs (36000µs) → no auto-flush.
+        // kAmcorDefaultRepeat = kSingleRepeat = 1, so sendGeneric() loops twice
+        // (r=0 and r=1), each ending with space(kAmcorGap=34300µs). Neither
+        // triggers auto-flush, so BOTH repeat frames accumulate in the buffer and
+        // are never transmitted until the next protocol's sendXxx() call fires the
+        // next flush — corrupting both decode results.
+        // Constants kAmcorFooterMark and kAmcorGap are defined in ir_Amcor.cpp
+        // only (not exported) → hardcoded numeric values here.
+        irsend.mark(1900);   // kAmcorFooterMark = 1900µs — closes trailing gap in receiver rawData
+        irsend.space(36001); // >= kRmtGapThresholdUs (36000µs) — flushes both repeat frames to RMT HW
         delay(acSendDelay);
         break;
       }
@@ -783,8 +917,11 @@ void Handle_AC(uint8_t t, const String& power) {
     // ── 46: Airwell 34-bit (toggle) ──────────────────────────
     case AC_AIRWELL: {
         IRAirwellAc ac(kIrLed);
+        // BUG FIX (Bug #17): toggle-style protocol — same root cause as V7/V8/V15.
+        // OFF branch must include setTemp()+setMode() so the frame carries the
+        // correct setpoint instead of stateReset() defaults.
         if      (power == "ON")  { ac.setPowerToggle(true); ac.setTemp(t); ac.setMode(kAirwellCool); }
-        else if (power == "OFF") { ac.setPowerToggle(true); }
+        else if (power == "OFF") { ac.setPowerToggle(true); ac.setTemp(t); ac.setMode(kAirwellCool); }
         else                     { ac.setTemp(t); ac.setMode(kAirwellCool); }
         irsend.sendAirwell(ac.getRaw(), kAirwellBits, kAirwellMinRepeats);
         delay(acSendDelay);
@@ -965,7 +1102,7 @@ void Handle_AC(uint8_t t, const String& power) {
         // Two problems with Trotec on the RMT path:
         //
         // 1. FLUSH: kTrotecGap (6184µs) and kTrotecHdrSpace (7364µs) are both
-        //    below kRmtGapThresholdUs (36000µs), so _flushBuffer() is never
+        //    below kRmtGapThresholdUs (20000µs), so _flushBuffer() is never
         //    triggered automatically by space().
         //
         // 2. RECEIVER ISR GAP: The IrTrace receiver ISR records a space only
@@ -975,7 +1112,7 @@ void Handle_AC(uint8_t t, const String& power) {
         //    at 149 entries (rawlen=150). decodeTrotec() requires rawlen > 150
         //    and fails its minimum-length check at that value.
         //
-        // Fix for both: append one extra kTrotecBitMark + flush gap after
+        // Fix for both: append one extra kTrotecBitMark + 36ms gap after
         // sendTrotec().  The mark provides the rising-edge ISR trigger that
         // closes the kTrotecGapEnd space in rawData (rawData[149] ≈ 1524µs,
         // matchAtLeast(1524, 1500) passes).  space(36001) >= kRmtGapThresholdUs

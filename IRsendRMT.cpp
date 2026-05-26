@@ -18,7 +18,8 @@ IRsendRMT::IRsendRMT(uint16_t IRsendPin, bool inverted, bool use_modulation)
       _symCount(0),
       _currentFreqHz(38000),
       _pendingMarkUs(0),
-      _hasPendingMark(false) {}
+      _hasPendingMark(false),
+      _suppressAutoFlush(false) {}
 
 IRsendRMT::~IRsendRMT() {
   if (_txChannel) {
@@ -108,7 +109,9 @@ void IRsendRMT::space(uint32_t usec) {
   _addSymbolPair(markUs, usec);
 
   // Inter-frame gap detected → flush everything to RMT hardware now.
-  if (usec >= kRmtGapThresholdUs) {
+  // Auto-flush is skipped when _suppressAutoFlush is true — used by V23
+  // Hitachi AC424 to prevent its 49,290 µs leader space from flushing early.
+  if (!_suppressAutoFlush && usec >= kRmtGapThresholdUs) {
     _flushBuffer();
   }
 }
@@ -170,10 +173,27 @@ void IRsendRMT::_addSymbolPair(uint32_t markUs, uint32_t spaceUs) {
     if (_symCount + 1 >= kRmtSymbolBufSize) {
       _flushBuffer();
     }
-    uint32_t d0 = std::min(remaining, static_cast<uint32_t>(kRmtMaxTickDuration));
-    remaining  -= d0;
-    uint32_t d1 = std::min(remaining, static_cast<uint32_t>(kRmtMaxTickDuration));
-    remaining  -= d1;
+    uint32_t d0, d1;
+    if (remaining <= static_cast<uint32_t>(kRmtMaxTickDuration)) {
+      // Remainder fits in one 15-bit field.  Naively taking d0=remaining, d1=0
+      // creates a continuation symbol with duration1=0.  On ESP32-C5 this causes
+      // a hardware glitch in the RMT output when the silence falls between two
+      // active signal sections (e.g. Daikin2: kDaikin2Gap=35204µs >
+      // kRmtMaxTickDuration=32767µs).  The glitch inserts a spurious edge into
+      // what should be continuous silence, corrupting the inter-section gap that
+      // the receiver measures → UNKNOWN decode.
+      //
+      // Fix: split the remainder across BOTH d0 and d1 so duration1 is never 0.
+      d0 = (remaining + 1) >> 1;          // ceil half — always ≥ 1
+      remaining -= d0;
+      d1 = remaining;                     // floor half (≥ 0; 0 only if remaining==1)
+      remaining  = 0;
+    } else {
+      d0 = kRmtMaxTickDuration;
+      remaining -= d0;
+      d1 = std::min(remaining, static_cast<uint32_t>(kRmtMaxTickDuration));
+      remaining -= d1;
+    }
 
     rmt_symbol_word_t extra = {};
     extra.level0    = 0;
