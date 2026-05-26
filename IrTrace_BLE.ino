@@ -32,6 +32,14 @@
  *   WIFI_SET:<SSID>\n<PASS>  Receive Wi-Fi credentials
  *   FIND_RX:ON  Start find-receiver mode (fires t 24 every 3 s)
  *   FIND_RX:OFF Stop find-receiver mode
+ *   LRN:STATUS                 Request all slot states + control mode
+ *   LRN:MODE:PROTOCOL          Switch to protocol control mode (default)
+ *   LRN:MODE:LEARNED           Switch to learned-fallback control mode
+ *   LRN:BEGIN:<slot>           Start capture for slot (0=OFF, 1-15=COOL_16..30)
+ *   LRN:REPLAY                 Test-replay the last captured slot from RAM
+ *   LRN:SAVE                   Commit captured slot to NVS
+ *   LRN:DISCARD                Discard unsaved capture (saved slots untouched)
+ *   LRN:DELETE:<slot>          Erase a saved slot from NVS
  *
  * ── BLE Replies (ESP32 → Phone) ─────────────────────────────
  *   TX:OK              IR sent successfully
@@ -40,7 +48,15 @@
  *   FIND_RX:ON         Find-receiver mode started
  *   FIND_RX:OFF        Find-receiver mode stopped
  *   FIND_RX:PULSE      IR fired in find mode (replaces TX:OK during find)
- *   ... (other standard replies)
+ *   LRN:MODE:PROTOCOL|LEARNED  Active control mode
+ *   LRN:SLOT:<n>:EMPTY|CAPTURED|SAVED  Per-slot state
+ *   LRN:ACTIVE:<n>     Currently active learn slot
+ *   LRN:WAIT:<name>    Device ready to receive remote button press
+ *   LRN:CAPTURED:<n>   Slot captured into RAM
+ *   LRN:LEN:<n>        Number of mark/space pairs captured
+ *   LRN:REPLAYED:<n>   Test replay completed
+ *   LRN:SAVED:<n>      Slot written to NVS
+ *   LRN:DISCARDED      Capture discarded
  * ============================================================
  */
 
@@ -136,6 +152,13 @@ void led_ir_burst() {
 // Defines: acVariant, acPower, acMode, kIrLed, irsend, Handle_AC()
 #include "IR_TRANSMITTER.h"
 
+// ── NVS + IR Learn ───────────────────────────────────────────
+// NVS_CONFIG.h: config load/save + irlearn NVS helpers
+// IR_LEARN.h:   slot model, capture/replay state machine
+// Both included after IR_TRANSMITTER.h so irsend / kIrLed are visible.
+#include "NVS_CONFIG.h"
+#include "IR_LEARN.h"
+
 // ============================================================
 //  BLE — configuration
 // ============================================================
@@ -143,20 +166,23 @@ void led_ir_burst() {
 #define BLE_SERVICE_UUID     "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
 #define BLE_RX_UUID          "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
 #define BLE_TX_UUID          "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
-#define CFG_NAMESPACE        "irtrace_ble"
-#define CFG_DEFAULT_UID      "999"
-#define CFG_DEFAULT_WAKE_SEC 60u
-#define CFG_ADMIN_PASS       "1234admin"
+// CFG_NAMESPACE, CFG_DEFAULT_UID, CFG_DEFAULT_WAKE_SEC, CFG_ADMIN_PASS
+// are defined in NVS_CONFIG.h
 
 NimBLECharacteristic* gTxChar        = nullptr;
 bool                  gBleConnected  = false;
 bool                  gNeedsAdvRestart = false;
 bool                  gAdminUnlocked = false;
+// Globals that NVS_CONFIG.h extern-declares:
 Preferences           gPrefs;
 String                gStoredUid      = CFG_DEFAULT_UID;
 uint32_t              gStoredWakeSec  = CFG_DEFAULT_WAKE_SEC;
 String                gStoredWifiSsid = "";
 String                gStoredWifiPass = "";
+
+// Learn mode pending-replay flags (set by BLE callback, consumed in loop())
+static bool    gLearnReplayPending = false;
+static uint8_t gLearnReplaySlot    = 0xFF;
 static const uint8_t  BLE_NOTIFY_QUEUE_LEN = 24;
 String                gBleNotifyQueue[BLE_NOTIFY_QUEUE_LEN];
 uint8_t               gBleNotifyHead = 0;
@@ -349,84 +375,24 @@ static bool isValidVariant(uint8_t id) {
 }
 
 // ============================================================
-//  Stored configuration helpers
+//  Stored configuration helpers  (NVS_CONFIG.h provides the bodies)
 // ============================================================
-static String padUid(const String& raw) {
-  long value = raw.toInt();
-  if (value < 1) value = 1;
-  if (value > 999) value = 999;
-  char buf[4];
-  snprintf(buf, sizeof(buf), "%03ld", value);
-  return String(buf);
-}
+// padUid is now nvsConfigPadUid() inside NVS_CONFIG.h.
+// Local alias for any remaining callers in this file.
+static String padUid(const String& raw) { return nvsConfigPadUid(raw); }
 
 static void loadStoredConfig() {
-  if (!gPrefs.begin(CFG_NAMESPACE, true)) {
-    Serial.println(F("[CFG] NVS open failed for read"));
-    return;
-  }
-
-  gStoredWifiSsid = gPrefs.getString("ssid", "");
-  gStoredWifiPass = gPrefs.getString("pass", "");
-  const uint8_t storedVariant = gPrefs.getUChar("variant", acVariant);
-  gStoredUid = padUid(gPrefs.getString("uid", CFG_DEFAULT_UID));
-  gStoredWakeSec = gPrefs.getUInt("wake_sec", CFG_DEFAULT_WAKE_SEC);
-  gPrefs.end();
-
-  if (gStoredWakeSec < 60u) gStoredWakeSec = 60u;
-  if (gStoredWakeSec > 36000u) gStoredWakeSec = 36000u;
-  if (isValidVariant(storedVariant)) acVariant = storedVariant;
-
+  uint8_t storedVariant = 0xFF;
+  // NVS_CONFIG.h loadStoredConfig() fills globals + storedVariant out-param
+  ::loadStoredConfig(&storedVariant);
+  if (storedVariant != 0xFF && isValidVariant(storedVariant))
+    acVariant = storedVariant;
   Serial.printf("[CFG] Loaded variant=%d (%s) uid=%s wake=%lu ssid=%s\n",
                 acVariant, variantName(acVariant), gStoredUid.c_str(),
                 (unsigned long)gStoredWakeSec,
                 gStoredWifiSsid.length() ? gStoredWifiSsid.c_str() : "(none)");
 }
-
-static bool saveWifiConfig(const String& ssid, const String& pass) {
-  if (!gPrefs.begin(CFG_NAMESPACE, false)) {
-    Serial.println(F("[CFG] NVS open failed for Wi-Fi save"));
-    return false;
-  }
-
-  gPrefs.putString("ssid", ssid);
-  gPrefs.putString("pass", pass);
-  gPrefs.end();
-
-  gStoredWifiSsid = ssid;
-  gStoredWifiPass = pass;
-  return true;
-}
-
-static bool saveVariantConfig(uint8_t variant) {
-  if (!gPrefs.begin(CFG_NAMESPACE, false)) {
-    Serial.println(F("[CFG] NVS open failed for variant save"));
-    return false;
-  }
-
-  gPrefs.putUChar("variant", variant);
-  gPrefs.end();
-  return true;
-}
-
-static bool saveAdminConfig(const String& uid, uint32_t wakeSec) {
-  const String paddedUid = padUid(uid);
-  if (wakeSec < 60u) wakeSec = 60u;
-  if (wakeSec > 36000u) wakeSec = 36000u;
-
-  if (!gPrefs.begin(CFG_NAMESPACE, false)) {
-    Serial.println(F("[CFG] NVS open failed for admin save"));
-    return false;
-  }
-
-  gPrefs.putString("uid", paddedUid);
-  gPrefs.putUInt("wake_sec", wakeSec);
-  gPrefs.end();
-
-  gStoredUid = paddedUid;
-  gStoredWakeSec = wakeSec;
-  return true;
-}
+// saveWifiConfig, saveVariantConfig, saveAdminConfig are provided by NVS_CONFIG.h
 
 // ============================================================
 //  BLE — send one line to phone
@@ -587,6 +553,19 @@ void bleSendStatus() {
   bleSend("TEMP:" + String(gTxTemp));
   bleSend("RPT:"  + String(gTxRepeat));
   bleSend("RAW:"  + String(gRawEnabled ? "ON" : "OFF"));
+  // LRN:MODE and all slot states are sent by learnSendAllStatus() — not here.
+  // Removing the duplicate keeps the on-connect queue well within 23 usable slots.
+}
+
+// Defined here (after bleSend) because IR_LEARN.h forward-declared it.
+// Sends LRN:SLOT:<idx>:<state> for every slot + active slot + mode.
+void learnSendAllStatus() {
+  bleSend("LRN:MODE:" + String(gCtrlMode == CTRL_LEARNED ? "LEARNED" : "PROTOCOL"));
+  for (uint8_t i = 0; i < LEARN_NUM_SLOTS; i++) {
+    bleSend("LRN:SLOT:" + String(i) + ":" + learnSlotStateStr(i));
+  }
+  if (gActiveLearnSlot < LEARN_NUM_SLOTS)
+    bleSend("LRN:ACTIVE:" + String(gActiveLearnSlot));
 }
 
 // ============================================================
@@ -602,6 +581,7 @@ class BleServerCB : public NimBLEServerCallbacks {
     Serial.println(F("[BLE] Phone connected"));
     setLedBase(LED_BLE_CONN);  // solid ON — user is now in config mode
     bleSendStatus();        // sync app with current device state on connect
+    learnSendAllStatus();   // sync learn slot states with app
     gWifiSendPending = true; // send Wi-Fi list from loop(), not from callback
   }
   void onDisconnect(NimBLEServer* s, NimBLEConnInfo& info, int reason) override {
@@ -811,7 +791,93 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
       return;
     }
 
-    bleSend("ERR:Unknown cmd. Use v/on/off/t/r/status/RAW=ON|OFF");
+    // ── LRN:STATUS  all slot states ──────────────────────
+    if (cmd.equalsIgnoreCase("LRN:STATUS")) {
+      learnSendAllStatus();
+      return;
+    }
+
+    // ── LRN:MODE:PROTOCOL | LRN:MODE:LEARNED ─────────────
+    if (cmd.startsWith("LRN:MODE:")) {
+      String mode = cmd.substring(9);
+      mode.trim();
+      if (mode.equalsIgnoreCase("LEARNED")) {
+        gCtrlMode = CTRL_LEARNED;
+        bleSend("LRN:MODE:LEARNED");
+        Serial.println(F("[LEARN] Control mode → LEARNED"));
+      } else {
+        gCtrlMode = CTRL_PROTOCOL;
+        bleSend("LRN:MODE:PROTOCOL");
+        Serial.println(F("[LEARN] Control mode → PROTOCOL"));
+      }
+      return;
+    }
+
+    // ── LRN:BEGIN:<slot>  start capture for slot ──────────
+    if (cmd.startsWith("LRN:BEGIN:")) {
+      const int slot = cmd.substring(10).toInt();
+      if (slot < 0 || slot >= LEARN_NUM_SLOTS) {
+        bleSend("ERR:Invalid slot " + String(slot));
+        return;
+      }
+      learnBeginCapture((uint8_t)slot);
+      bleSend("LRN:WAIT:" + String(kLearnSlotNames[slot]));
+      bleSend("LRN:SLOT:" + String(slot) + ":" + learnSlotStateStr((uint8_t)slot));
+      return;
+    }
+
+    // ── LRN:REPLAY  test replay from RAM buffer ────────────
+    if (cmd.equalsIgnoreCase("LRN:REPLAY")) {
+      if (gActiveLearnSlot >= LEARN_NUM_SLOTS ||
+          gSlotState[gActiveLearnSlot] != SLOT_CAPTURED) {
+        bleSend("ERR:No captured slot to replay");
+        return;
+      }
+      if (!learnPrepareTestReplay()) {
+        bleSend("ERR:Replay prepare failed");
+        return;
+      }
+      // Flag for loop() — never call irsend from BLE callback
+      gLearnReplayPending = true;
+      gLearnReplaySlot    = gActiveLearnSlot;
+      return;
+    }
+
+    // ── LRN:SAVE  commit RAM capture to NVS ───────────────
+    if (cmd.equalsIgnoreCase("LRN:SAVE")) {
+      if (!learnSaveSlot()) {
+        bleSend("ERR:Save failed — capture first");
+        return;
+      }
+      bleSend("LRN:SAVED:" + String(gActiveLearnSlot));
+      bleSend("LRN:SLOT:"  + String(gActiveLearnSlot) + ":SAVED");
+      gLedSubmitPending = true;
+      return;
+    }
+
+    // ── LRN:DISCARD  throw away unsaved capture ────────────
+    if (cmd.equalsIgnoreCase("LRN:DISCARD")) {
+      const uint8_t prevSlot = gActiveLearnSlot;
+      learnDiscardCapture();
+      if (prevSlot < LEARN_NUM_SLOTS)
+        bleSend("LRN:SLOT:" + String(prevSlot) + ":" + learnSlotStateStr(prevSlot));
+      bleSend("LRN:DISCARDED");
+      return;
+    }
+
+    // ── LRN:DELETE:<slot>  erase slot from NVS ────────────
+    if (cmd.startsWith("LRN:DELETE:")) {
+      const int slot = cmd.substring(11).toInt();
+      if (slot < 0 || slot >= LEARN_NUM_SLOTS) {
+        bleSend("ERR:Invalid slot " + String(slot));
+        return;
+      }
+      learnDeleteSlot((uint8_t)slot);
+      bleSend("LRN:SLOT:" + String(slot) + ":EMPTY");
+      return;
+    }
+
+    bleSend("ERR:Unknown cmd. Use v/on/off/t/r/status/RAW=ON|OFF or LRN:*");
   }
 };
 
@@ -857,9 +923,60 @@ void setupBle() {
 //  throughout TX with no interference.
 // ============================================================
 void executeTx() {
+  // ── Test replay from learn workflow (LRN:REPLAY command) ────
+  if (gLearnReplayPending) {
+    gLearnReplayPending = false;
+    if (gLearnReplayLen > 0) {
+      irrecv.disableIRIn();
+      irsend.sendRaw(gLearnReplayBuf, gLearnReplayLen, gLearnReplayCarrier);
+      pinMode(kIrLed, OUTPUT); digitalWrite(kIrLed, LOW);
+      led_ir_burst();
+      irrecv.enableIRIn();
+      bleSend("LRN:REPLAYED:" + String(gLearnReplaySlot));
+      Serial.printf("[LEARN] Test-replayed slot %d (%s)  %u marks/spaces\n",
+                    gLearnReplaySlot, kLearnSlotNames[gLearnReplaySlot], gLearnReplayLen);
+    } else {
+      bleSend("ERR:Replay buffer empty");
+    }
+  }
+
   if (!gTxJob.pending) return;
   gTxJob.pending = false;
 
+  // ── Learned fallback mode ────────────────────────────────────
+  if (gCtrlMode == CTRL_LEARNED) {
+    const uint8_t slot = learnSlotForJob(gTxJob.power, gTxJob.temp);
+    if (slot >= LEARN_NUM_SLOTS || gSlotState[slot] != SLOT_SAVED) {
+      // Receiver still running — disableIRIn() not yet called, so do NOT enableIRIn().
+      bleSend("ERR:Slot " + String(kLearnSlotNames[slot < LEARN_NUM_SLOTS ? slot : 0])
+              + " not learned");
+      return;
+    }
+    if (!learnPrepareReplay(slot)) {
+      // Same: receiver still running at this point.
+      bleSend("ERR:Slot load failed");
+      return;
+    }
+    irrecv.disableIRIn();
+    irsend.sendRaw(gLearnReplayBuf, gLearnReplayLen, gLearnReplayCarrier);
+    pinMode(kIrLed, OUTPUT); digitalWrite(kIrLed, LOW);
+    led_ir_burst();
+    irrecv.enableIRIn();
+
+    if (gTxJob.power == "ON")  acPower = true;
+    if (gTxJob.power == "OFF") acPower = false;
+
+    if (gFindRxActive) {
+      bleSend("FIND_RX:PULSE");
+    } else {
+      bleSend("TX:OK");
+      bleSend("PWR:"  + String(acPower ? "ON" : "OFF"));
+      bleSend("TEMP:" + String(gTxJob.temp));
+    }
+    return;
+  }
+
+  // ── Protocol mode (default) ──────────────────────────────────
   Serial.printf("[TX] variant=%d (%s)  power=%s  temp=%d  repeat=%d\n",
                 acVariant, variantName(acVariant),
                 gTxJob.power.c_str(), gTxJob.temp, gTxRepeat);
@@ -941,6 +1058,7 @@ void setup() {
   assert(irutils::lowLevelSanityCheck() == 0);
   Serial.printf("\n" D_STR_IRRECVDUMP_STARTUP "\n", kRecvPin);
   loadStoredConfig();
+  learnInit();           // scan irlearn NVS, mark saved slots
 
   // 1. Wi-Fi Scan — LED stays solid ON (loop not running yet, can't animate)
   performWifiScan();
@@ -1037,6 +1155,20 @@ void loop() {
     Serial.println(resultToSourceCode(&results));
     Serial.println();
     yield();
+
+    // ── Learn capture hook ─────────────────────────────────────
+    // If a learn slot is active, grab the raw timing into gLearnRamBuf
+    // instead of (or as well as) doing normal protocol decode.
+    if (gActiveLearnSlot < LEARN_NUM_SLOTS &&
+        gSlotState[gActiveLearnSlot] != SLOT_SAVED) {
+      if (learnStoreCapture(&results)) {
+        bleSend("LRN:CAPTURED:" + String(gActiveLearnSlot));
+        bleSend("LRN:SLOT:" + String(gActiveLearnSlot) + ":CAPTURED");
+        bleSend("LRN:LEN:"  + String(gLearnRamLen));
+      } else {
+        bleSend("ERR:Capture failed — point remote directly at sensor");
+      }
+    }
 
     // Send decoded result to phone
     sendDecodedToBle(&results);

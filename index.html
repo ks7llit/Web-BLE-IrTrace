@@ -260,6 +260,91 @@
     border-radius: 8px; padding: 9px 12px;
   }
 
+  /* ── LEARN FALLBACK CARD ──────────────────────────────── */
+  #learn-card { }
+
+  .lrn-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+
+  .lrn-mode-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px;
+  }
+  .lrn-mode-lbl { font-family: var(--mono); font-size: .65rem; font-weight: 700; color: var(--muted); flex-shrink: 0; }
+  .lrn-mode-btns { display: flex; gap: 6px; flex: 1; }
+  .btn-lrn-mode {
+    flex: 1; padding: 8px;
+    border: 1.5px solid var(--border); border-radius: 8px;
+    font-family: var(--mono); font-size: .72rem; font-weight: 700;
+    background: var(--bg); color: var(--muted); cursor: pointer; transition: all .15s;
+  }
+  .btn-lrn-mode:disabled { opacity: .35; cursor: not-allowed; }
+  .btn-lrn-mode.active-protocol { border-color: var(--accent); background: var(--accent-lt); color: var(--accent); }
+  .btn-lrn-mode.active-learned  { border-color: var(--green);  background: var(--green-lt);  color: var(--green); }
+
+  .lrn-note {
+    font-family: var(--mono); font-size: .68rem; line-height: 1.6; color: var(--muted);
+    background: var(--orange-lt); border: 1px solid #fde68a; border-radius: 8px; padding: 10px 12px;
+  }
+
+  /* Slot grid */
+  .lrn-slot-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+  }
+  .lrn-slot {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 8px 4px; border-radius: 9px;
+    border: 1.5px solid var(--border); background: var(--surface2);
+    cursor: pointer; transition: all .15s; user-select: none;
+  }
+  .lrn-slot:hover:not(.disabled) { border-color: var(--accent); background: var(--accent-lt); }
+  .lrn-slot.selected { border-color: var(--accent); background: var(--accent-lt); }
+  .lrn-slot.saved    { border-color: var(--green);  background: var(--green-lt); }
+  .lrn-slot.captured { border-color: var(--orange); background: var(--orange-lt); }
+  .lrn-slot.selected.saved    { border-color: var(--green);  background: var(--green-lt); }
+  .lrn-slot.selected.captured { border-color: var(--orange); background: var(--orange-lt); }
+  .lrn-slot.disabled { opacity: .4; cursor: not-allowed; }
+  .lrn-slot-name { font-family: var(--mono); font-size: .6rem; font-weight: 700; color: var(--text); text-align: center; line-height: 1.2; }
+  .lrn-slot-dot  { width: 7px; height: 7px; border-radius: 50%; background: var(--border); }
+  .lrn-slot.saved    .lrn-slot-dot { background: var(--green); }
+  .lrn-slot.captured .lrn-slot-dot { background: var(--orange); }
+
+  /* Slot legend */
+  .lrn-legend { display: flex; gap: 12px; flex-wrap: wrap; }
+  .lrn-legend-item { display: flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: .6rem; color: var(--muted); }
+  .lrn-legend-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  /* Workflow buttons */
+  .lrn-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn-lrn {
+    flex: 1; min-width: 90px; padding: 10px 8px;
+    border: none; border-radius: 9px;
+    font-family: var(--mono); font-size: .72rem; font-weight: 700;
+    cursor: pointer; transition: all .15s; letter-spacing: .03em;
+  }
+  .btn-lrn:disabled { opacity: .35; cursor: not-allowed; }
+  .btn-lrn.learn   { background: var(--accent-lt); color: var(--accent); border: 1.5px solid #93c5fd; }
+  .btn-lrn.replay  { background: var(--orange-lt); color: var(--orange); border: 1.5px solid #fde68a; }
+  .btn-lrn.save    { background: var(--green-lt);  color: var(--green);  border: 1.5px solid #86efac; }
+  .btn-lrn.discard { background: var(--surface2);  color: var(--muted);  border: 1.5px solid var(--border); }
+  .btn-lrn.delete  { background: var(--red-lt);    color: var(--red);    border: 1.5px solid #fca5a5; }
+  .btn-lrn.learn:not(:disabled):hover   { background: #bfdbfe; }
+  .btn-lrn.replay:not(:disabled):hover  { background: #fde68a; }
+  .btn-lrn.save:not(:disabled):hover    { background: #bbf7d0; }
+  .btn-lrn.discard:not(:disabled):hover { background: var(--border); }
+  .btn-lrn.delete:not(:disabled):hover  { background: #fecaca; }
+
+  /* Workflow status line */
+  .lrn-status-line {
+    font-family: var(--mono); font-size: .7rem;
+    padding: 8px 12px; border-radius: 8px;
+    background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+    min-height: 2.2rem; display: flex; align-items: center;
+  }
+  .lrn-status-line.capturing { background: var(--orange-lt); border-color: #fde68a; color: var(--orange); }
+  .lrn-status-line.ok        { background: var(--green-lt);  border-color: #86efac; color: var(--green); }
+  .lrn-status-line.err       { background: var(--red-lt);    border-color: #fca5a5; color: var(--red); }
+
   /* ── DEBUG CARD ─────────────────────────────────────────── */
   .ctrl-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
   .ctrl-row  { display: flex; align-items: center; gap: 10px; }
@@ -568,6 +653,56 @@
       <button class="btn-save-all" id="btn-save-all" disabled onclick="submitAll()">
         💾 SAVE ALL — Configure Device
       </button>
+    </div>
+  </div>
+
+  <!-- ── UNSUPPORTED AC SETUP (Learn Fallback) ─────────── -->
+  <div class="card" id="learn-card">
+    <div class="card-head">
+      <span class="card-label">Unsupported AC Setup</span>
+      <span class="pill pill-idle" id="lrn-mode-pill">Protocol</span>
+    </div>
+    <div class="lrn-body">
+
+      <div class="lrn-note">
+        Use this section only when the protocol library cannot control your AC.
+        Learn each command from your original remote, then switch to Learned mode.
+        Replays always use 38 kHz — carrier is not measured by the receiver.
+      </div>
+
+      <!-- Control mode toggle -->
+      <div class="lrn-mode-row">
+        <span class="lrn-mode-lbl">Control</span>
+        <div class="lrn-mode-btns">
+          <button class="btn-lrn-mode" id="btn-mode-proto"   disabled onclick="setLearnMode('PROTOCOL')">Protocol (default)</button>
+          <button class="btn-lrn-mode" id="btn-mode-learned" disabled onclick="setLearnMode('LEARNED')">Learned Fallback</button>
+        </div>
+      </div>
+
+      <!-- Slot grid: OFF + COOL_16..COOL_30 -->
+      <div>
+        <div class="lrn-legend" style="margin-bottom:8px">
+          <div class="lrn-legend-item"><div class="lrn-legend-dot" style="background:var(--border)"></div>Empty</div>
+          <div class="lrn-legend-item"><div class="lrn-legend-dot" style="background:var(--orange)"></div>Captured (unsaved)</div>
+          <div class="lrn-legend-item"><div class="lrn-legend-dot" style="background:var(--green)"></div>Saved</div>
+        </div>
+        <div class="lrn-slot-grid" id="lrn-slot-grid">
+          <!-- populated by buildLearnSlotGrid() -->
+        </div>
+      </div>
+
+      <!-- Workflow status -->
+      <div class="lrn-status-line" id="lrn-status">Select a slot above to begin.</div>
+
+      <!-- Workflow action buttons -->
+      <div class="lrn-actions">
+        <button class="btn-lrn learn"   id="btn-lrn-learn"   disabled onclick="learnBeginUi()">📥 LEARN</button>
+        <button class="btn-lrn replay"  id="btn-lrn-replay"  disabled onclick="learnReplayUi()">▶ TEST</button>
+        <button class="btn-lrn save"    id="btn-lrn-save"    disabled onclick="learnSaveUi()">💾 SAVE</button>
+        <button class="btn-lrn discard" id="btn-lrn-discard" disabled onclick="learnDiscardUi()">✕ DISCARD</button>
+        <button class="btn-lrn delete"  id="btn-lrn-delete"  disabled onclick="learnDeleteUi()">🗑 DELETE</button>
+      </div>
+
     </div>
   </div>
 
@@ -916,6 +1051,8 @@ async function onConnected() {
 
   // Request Wi-Fi list if not already sent
   await sendCmd('wget');
+  // Firmware sends learnSendAllStatus() on connect; also request explicitly in case of reconnect
+  await sendCmd('LRN:STATUS');
 }
 
 function onDisconnected() {
@@ -984,6 +1121,9 @@ function onNotify(event) {
       break;
     case 'ERR':
       addLog('err', val);
+      break;
+    case 'LRN':
+      handleLearnMsg(val);
       break;
   }
 }
@@ -1497,8 +1637,10 @@ function setControls(on) {
     .forEach(id => { const e = document.getElementById(id); if (e) e.disabled = !on; });
 
   if (!on) {
-    // Reset lookup buttons state to be safe
     setLookupButtons(false);
+    resetLearnUi();
+  } else {
+    updateLearnButtons();
   }
   syncAdminControls();
 }
@@ -1538,6 +1680,205 @@ function esc(s) {
 }
 
 // ============================================================
+// Learn Fallback — state & UI
+// ============================================================
+const LEARN_SLOT_NAMES = [
+  'OFF',
+  'COOL 16','COOL 17','COOL 18','COOL 19','COOL 20',
+  'COOL 21','COOL 22','COOL 23','COOL 24','COOL 25',
+  'COOL 26','COOL 27','COOL 28','COOL 29','COOL 30'
+];
+const LEARN_NUM_SLOTS = 16;
+
+let learnSlotStates  = Array(LEARN_NUM_SLOTS).fill('EMPTY'); // EMPTY|CAPTURED|SAVED
+let learnCtrlMode    = 'PROTOCOL';  // PROTOCOL | LEARNED
+let learnActiveSlot  = -1;          // selected slot index (-1 = none)
+let learnPendingCapture = false;    // waiting for remote button press
+
+function buildLearnSlotGrid() {
+  const grid = document.getElementById('lrn-slot-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  LEARN_SLOT_NAMES.forEach((name, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'lrn-slot';
+    cell.id = 'lrn-slot-' + i;
+    cell.innerHTML = `<div class="lrn-slot-name">${name}</div><div class="lrn-slot-dot"></div>`;
+    cell.onclick = () => learnSelectSlot(i);
+    grid.appendChild(cell);
+  });
+  updateLearnSlotGrid();
+}
+
+function updateLearnSlotGrid() {
+  LEARN_SLOT_NAMES.forEach((_, i) => {
+    const cell = document.getElementById('lrn-slot-' + i);
+    if (!cell) return;
+    cell.className = 'lrn-slot';
+    if (!connected) { cell.classList.add('disabled'); return; }
+    const state = learnSlotStates[i];
+    if (state === 'SAVED')    cell.classList.add('saved');
+    if (state === 'CAPTURED') cell.classList.add('captured');
+    if (i === learnActiveSlot) cell.classList.add('selected');
+  });
+}
+
+function learnSelectSlot(i) {
+  if (!connected) return;
+  learnActiveSlot = i;
+  updateLearnSlotGrid();
+  updateLearnButtons();
+  setLearnStatus('Slot ' + LEARN_SLOT_NAMES[i] + ' selected — press LEARN to capture.');
+}
+
+function updateLearnButtons() {
+  const state = learnActiveSlot >= 0 ? learnSlotStates[learnActiveSlot] : null;
+  const hasSlot = learnActiveSlot >= 0 && connected;
+  const captured = hasSlot && state === 'CAPTURED';
+  const saved    = hasSlot && state === 'SAVED';
+
+  document.getElementById('btn-lrn-learn').disabled   = !hasSlot;
+  document.getElementById('btn-lrn-replay').disabled  = !captured;
+  document.getElementById('btn-lrn-save').disabled    = !captured;
+  document.getElementById('btn-lrn-discard').disabled = !captured;
+  document.getElementById('btn-lrn-delete').disabled  = !saved;
+
+  document.getElementById('btn-mode-proto').disabled   = !connected;
+  document.getElementById('btn-mode-learned').disabled = !connected;
+}
+
+function applyLearnModeUi(mode) {
+  learnCtrlMode = mode;
+  const pill = document.getElementById('lrn-mode-pill');
+  const bp   = document.getElementById('btn-mode-proto');
+  const bl   = document.getElementById('btn-mode-learned');
+  if (mode === 'LEARNED') {
+    if (pill) { pill.className = 'pill pill-live'; pill.textContent = 'Learned'; }
+    if (bp)   bp.className  = 'btn-lrn-mode';
+    if (bl)   bl.className  = 'btn-lrn-mode active-learned';
+  } else {
+    if (pill) { pill.className = 'pill pill-proto'; pill.textContent = 'Protocol'; }
+    if (bp)   bp.className  = 'btn-lrn-mode active-protocol';
+    if (bl)   bl.className  = 'btn-lrn-mode';
+  }
+}
+
+function setLearnStatus(msg, type) {
+  const el = document.getElementById('lrn-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'lrn-status-line' + (type ? ' ' + type : '');
+}
+
+function handleLearnMsg(val) {
+  // val is the part after LRN: e.g. "SLOT:3:SAVED", "MODE:LEARNED", etc.
+  const parts = val.split(':');
+  const sub   = parts[0].toUpperCase();
+
+  switch (sub) {
+    case 'MODE':
+      applyLearnModeUi(parts[1] || 'PROTOCOL');
+      break;
+
+    case 'SLOT': {
+      const idx   = parseInt(parts[1]);
+      const state = (parts[2] || 'EMPTY').toUpperCase();
+      if (idx >= 0 && idx < LEARN_NUM_SLOTS) {
+        learnSlotStates[idx] = state;
+        updateLearnSlotGrid();
+        updateLearnButtons();
+      }
+      break;
+    }
+
+    case 'ACTIVE': {
+      const idx = parseInt(parts[1]);
+      if (idx >= 0 && idx < LEARN_NUM_SLOTS) {
+        learnActiveSlot = idx;
+        updateLearnSlotGrid();
+        updateLearnButtons();
+      }
+      break;
+    }
+
+    case 'WAIT':
+      learnPendingCapture = true;
+      setLearnStatus('Point remote at sensor and press the button for ' + (parts[1] || '?') + '…', 'capturing');
+      break;
+
+    case 'CAPTURED': {
+      learnPendingCapture = false;
+      const idx = parseInt(parts[1]);
+      setLearnStatus('Captured slot ' + LEARN_SLOT_NAMES[idx] + ' — press TEST to verify, then SAVE.', 'ok');
+      break;
+    }
+
+    case 'LEN':
+      // e.g. LRN:LEN:247 — just log
+      addLog('sys', 'Learn: ' + parts[1] + ' mark/space pairs captured');
+      break;
+
+    case 'REPLAYED':
+      setLearnStatus('Test replay sent — did the AC respond? If yes, press SAVE.', 'ok');
+      break;
+
+    case 'SAVED': {
+      const idx = parseInt(parts[1]);
+      setLearnStatus('Slot ' + LEARN_SLOT_NAMES[idx] + ' saved to device storage.', 'ok');
+      break;
+    }
+
+    case 'DISCARDED':
+      learnPendingCapture = false;
+      setLearnStatus('Capture discarded. Previously saved data (if any) is unchanged.', '');
+      break;
+
+    default:
+      addLog('rx', 'LRN:' + val);
+  }
+}
+
+// ── UI action handlers ────────────────────────────────────────
+
+async function setLearnMode(mode) {
+  await sendCmd('LRN:MODE:' + mode);
+}
+
+async function learnBeginUi() {
+  if (learnActiveSlot < 0) { addLog('err', 'Select a slot first'); return; }
+  await sendCmd('LRN:BEGIN:' + learnActiveSlot);
+}
+
+async function learnReplayUi() {
+  await sendCmd('LRN:REPLAY');
+}
+
+async function learnSaveUi() {
+  await sendCmd('LRN:SAVE');
+}
+
+async function learnDiscardUi() {
+  await sendCmd('LRN:DISCARD');
+}
+
+async function learnDeleteUi() {
+  if (learnActiveSlot < 0) return;
+  if (!confirm('Delete saved slot "' + LEARN_SLOT_NAMES[learnActiveSlot] + '"?')) return;
+  await sendCmd('LRN:DELETE:' + learnActiveSlot);
+}
+
+// Reset learn UI on disconnect
+function resetLearnUi() {
+  learnPendingCapture = false;
+  learnActiveSlot  = -1;
+  learnSlotStates  = Array(LEARN_NUM_SLOTS).fill('EMPTY');
+  applyLearnModeUi('PROTOCOL');
+  updateLearnSlotGrid();
+  updateLearnButtons();
+  setLearnStatus('Connect to device to manage learned slots.');
+}
+
+// ============================================================
 // Init — build universal dropdown on page load
 // ============================================================
 (function buildUniversalDropdown() {
@@ -1552,6 +1893,8 @@ function esc(s) {
 })();
 
 resetAdminUi();
+buildLearnSlotGrid();
+resetLearnUi();
 
 // Web Bluetooth support check
 if (!navigator.bluetooth) {

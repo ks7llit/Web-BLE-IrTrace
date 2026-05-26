@@ -1,0 +1,8 @@
+# Name,    Type, SubType,  Offset,   Size,      # Notes
+nvs,       data, nvs,      0x9000,   0x5000,    # 20 KB  shared config (max before otadata)
+otadata,   data, ota,      0xE000,   0x2000,    # 8 KB   OTA state (fixed position)
+app0,      app,  ota_0,    0x10000,  0x3B0000,  # 3.6875 MB  OTA slot 0
+app1,      app,  ota_1,    0x3C0000, 0x3B0000,  # 3.6875 MB  OTA slot 1  (end: 0x770000)
+irlearn,   data, nvs,      0x770000, 0xC000,    # 48 KB  learned IR blobs (end: 0x77C000)
+spiffs,    data, spiffs,   0x77C000, 0x74000,   # 464 KB (end: 0x7F0000)
+coredump,  data, coredump, 0x7F0000, 0x10000,   # 64 KB  crash snapshots (end: 0x800000)
