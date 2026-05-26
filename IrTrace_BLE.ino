@@ -115,6 +115,12 @@
 #define STATUS_LED_PIN  10
 #define STATUS_LED_ON   HIGH
 
+// LED state machine enums — declared here (before any function definitions)
+// so the Arduino preprocessor can resolve the type when it auto-generates
+// forward declarations for setLedBase() and pumpLed().
+enum LedBase    : uint8_t { LED_WIFI_SCAN, LED_BLE_ADV, LED_BLE_CONN, LED_FIND_RX };
+enum LedOverlay : uint8_t { LED_OVL_NONE, LED_OVL_IR, LED_OVL_SUBMIT };
+
 // Pending flags — set from ISR/callback context, consumed by pumpLed() in loop()
 static bool gLedIrPending     = false;  // set by led_ir_burst(), triggers IR overlay
 static bool gLedSubmitPending = false;  // set on config save, triggers submit overlay
@@ -159,12 +165,7 @@ unsigned long         gBleNextNotifyMs = 0;
 bool                  gFindRxActive    = false;  // find-receiver mode flag
 unsigned long         gFindRxNextMs    = 0;       // next scheduled find-mode TX
 
-// ── LED state machine ─────────────────────────────────────────
-// Base states (persistent — loop continuously)
-enum LedBase    : uint8_t { LED_WIFI_SCAN, LED_BLE_ADV, LED_BLE_CONN, LED_FIND_RX };
-// Overlay states (one-shot — run once, then return to base)
-enum LedOverlay : uint8_t { LED_OVL_NONE, LED_OVL_IR, LED_OVL_SUBMIT };
-
+// ── LED state machine globals ─────────────────────────────────
 static LedBase       gLedBase     = LED_WIFI_SCAN; // current base state
 static LedOverlay    gLedOverlay  = LED_OVL_NONE;  // active overlay (or NONE)
 static uint8_t       gLedOvlStep  = 0;             // overlay animation step counter
