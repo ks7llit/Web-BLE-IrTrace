@@ -46,6 +46,7 @@
   .brand-icon svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .brand-name { font-family: var(--mono); font-weight: 700; font-size: .95rem; }
   .brand-sub  { font-size: .63rem; color: var(--muted); font-family: var(--mono); }
+  .brand-sub.ver-mismatch { color: var(--red); }
   #btn-connect {
     display: flex; align-items: center; gap: 8px;
     padding: 9px 18px; border: none; border-radius: 9px;
@@ -440,7 +441,7 @@
     </div>
     <div>
       <div class="brand-name">IrTrace</div>
-      <div class="brand-sub">ESP32-C5 · RX · BLE</div>
+      <div class="brand-sub" id="version-line">ESP32-C5 &middot; WEB -- / FW --</div>
     </div>
   </div>
   <button id="btn-connect" onclick="toggleConnect()">
@@ -750,8 +751,10 @@
 const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const TX_UUID      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 const RX_UUID      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const IRTRACE_WEB_VERSION = 'v0.02';
 
 let bleDevice = null, rxChar = null, connected = false;
+let firmwareVersion = '';
 const enc = new TextEncoder(), dec = new TextDecoder();
 
 // ============================================================
@@ -1038,6 +1041,8 @@ function disconnect() {
 
 async function onConnected() {
   connected = true;
+  firmwareVersion = '';
+  updateVersionLine();
   document.getElementById('btn-connect').classList.add('conn');
   document.getElementById('btn-label').textContent = 'Disconnect';
   setStrip('ok', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
@@ -1049,6 +1054,8 @@ async function onConnected() {
   setPill('ir-pill', 'pill pill-live', 'Live');
   addLog('sys', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
 
+  // Firmware version is shown in the header to verify HTML/FW pairing.
+  await sendCmd('ver');
   // Request Wi-Fi list if not already sent
   await sendCmd('wget');
   // Firmware sends learnSendAllStatus() on connect; also request explicitly in case of reconnect
@@ -1057,6 +1064,8 @@ async function onConnected() {
 
 function onDisconnected() {
   connected = false; rxChar = null;
+  firmwareVersion = '';
+  updateVersionLine();
   document.getElementById('btn-connect').classList.remove('conn');
   document.getElementById('btn-label').textContent = 'Connect';
   setStrip('', 'Disconnected — tap Connect to reconnect');
@@ -1083,6 +1092,10 @@ function onNotify(event) {
   const val = raw.substring(ci + 1).trim();
 
   switch (key) {
+    case 'FW':
+      firmwareVersion = val;
+      updateVersionLine();
+      break;
     case 'PROTOCOL': onProtocolReceived(val);    break;
     case 'POWER':    updateIR('power',    val);  break;
     case 'MODE':     updateIR('mode',     val);  break;
@@ -1298,7 +1311,9 @@ function updateSaveChecklist() {
     ssid = (wifiList[parseInt(sel.value)] || {}).ssid || '';
   }
   wifiReady  = ssid.length > 0;
-  protoReady = activeVariantId !== null;
+  const learnedReady = learnCtrlMode === 'LEARNED' &&
+                       learnSlotStates.every(state => state === 'SAVED');
+  protoReady = (learnCtrlMode === 'LEARNED') ? learnedReady : activeVariantId !== null;
 
   // ── Update WiFi check item ────────────────────────────────
   const chkWifi    = document.getElementById('chk-wifi');
@@ -1319,9 +1334,18 @@ function updateSaveChecklist() {
     chkProto.classList.toggle('ready', protoReady);
     if (!protoReady) chkProto.classList.remove('missing');
     chkProto.querySelector('.chk-icon').textContent = protoReady ? '✅' : '○';
-    if (chkProtoLbl) chkProtoLbl.textContent = protoReady
-      ? 'Protocol: ' + activeVariantName
-      : 'IR protocol — not tested yet';
+    if (chkProtoLbl) {
+      if (learnCtrlMode === 'LEARNED') {
+        const savedCount = learnSlotStates.filter(state => state === 'SAVED').length;
+        chkProtoLbl.textContent = learnedReady
+          ? 'IR: Learned Fallback (' + savedCount + '/' + LEARN_NUM_SLOTS + ' slots saved)'
+          : 'IR learned slots — ' + savedCount + '/' + LEARN_NUM_SLOTS + ' saved';
+      } else {
+        chkProtoLbl.textContent = protoReady
+          ? 'Protocol: ' + activeVariantName
+          : 'IR protocol — not tested yet';
+      }
+    }
   }
 
   // ── Save pill ─────────────────────────────────────────────
@@ -1383,11 +1407,19 @@ async function submitAll() {
   addLog('sys', 'Saving Wi-Fi credentials...');
   await sendCmd(`WIFI_SET:${ssid}\n${pass}`);
 
-  addLog('sys', 'Saving IR protocol variant...');
-  await sendCmd('save');
+  if (learnCtrlMode === 'LEARNED') {
+    addLog('sys', 'Using learned fallback slots for IR control...');
+    await sendCmd('LRN:MODE:LEARNED');
+  } else {
+    addLog('sys', 'Saving protocol control mode and IR variant...');
+    await sendCmd('LRN:MODE:PROTOCOL');
+    await sendCmd('save');
+  }
 
   // ── Success ───────────────────────────────────────────────
-  addLog('sys', '✅ Device configured — WiFi + Protocol saved');
+  addLog('sys', learnCtrlMode === 'LEARNED'
+    ? '✅ Device configured — WiFi + Learned Fallback ready'
+    : '✅ Device configured — WiFi + Protocol saved');
   setPill('save-pill', 'pill pill-live', 'Saved ✅');
   if (btn) {
     btn.classList.remove('saving');
@@ -1656,6 +1688,16 @@ function setPill(id, cls, txt) {
   if (el) { el.className = cls; el.textContent = txt; }
 }
 
+function updateVersionLine() {
+  const el = document.getElementById('version-line');
+  if (!el) return;
+  const mismatch = firmwareVersion && firmwareVersion !== IRTRACE_WEB_VERSION;
+  el.textContent = 'ESP32-C5 / WEB ' + IRTRACE_WEB_VERSION +
+                   ' / FW ' + (firmwareVersion || '--') +
+                   (mismatch ? ' !' : '');
+  el.classList.toggle('ver-mismatch', !!mismatch);
+}
+
 let logFirst = true;
 function addLog(type, msg) {
   const el = document.getElementById('log');
@@ -1761,6 +1803,7 @@ function applyLearnModeUi(mode) {
     if (bp)   bp.className  = 'btn-lrn-mode active-protocol';
     if (bl)   bl.className  = 'btn-lrn-mode';
   }
+  updateSaveChecklist();
 }
 
 function setLearnStatus(msg, type) {
@@ -1787,6 +1830,7 @@ function handleLearnMsg(val) {
         learnSlotStates[idx] = state;
         updateLearnSlotGrid();
         updateLearnButtons();
+        updateSaveChecklist();
       }
       break;
     }
@@ -1875,6 +1919,7 @@ function resetLearnUi() {
   applyLearnModeUi('PROTOCOL');
   updateLearnSlotGrid();
   updateLearnButtons();
+  updateSaveChecklist();
   setLearnStatus('Connect to device to manage learned slots.');
 }
 
@@ -1895,6 +1940,7 @@ function resetLearnUi() {
 resetAdminUi();
 buildLearnSlotGrid();
 resetLearnUi();
+updateVersionLine();
 
 // Web Bluetooth support check
 if (!navigator.bluetooth) {
