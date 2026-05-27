@@ -702,6 +702,7 @@
         <button class="btn-lrn save"    id="btn-lrn-save"    disabled onclick="learnSaveUi()">💾 SAVE</button>
         <button class="btn-lrn discard" id="btn-lrn-discard" disabled onclick="learnDiscardUi()">✕ DISCARD</button>
         <button class="btn-lrn delete"  id="btn-lrn-delete"  disabled onclick="learnDeleteUi()">🗑 DELETE</button>
+        <button class="btn-lrn delete"  id="btn-lrn-delete-all" disabled onclick="learnDeleteAllUi()">DELETE ALL</button>
       </div>
 
     </div>
@@ -751,7 +752,7 @@
 const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const TX_UUID      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 const RX_UUID      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
-const IRTRACE_WEB_VERSION = 'v0.02';
+const IRTRACE_WEB_VERSION = 'v@0.0.2';
 
 let bleDevice = null, rxChar = null, connected = false;
 let firmwareVersion = '';
@@ -1778,12 +1779,14 @@ function updateLearnButtons() {
   const hasSlot = learnActiveSlot >= 0 && connected;
   const captured = hasSlot && state === 'CAPTURED';
   const saved    = hasSlot && state === 'SAVED';
+  const hasAnyLearnedData = learnSlotStates.some(state => state !== 'EMPTY');
 
   document.getElementById('btn-lrn-learn').disabled   = !hasSlot || saved;
   document.getElementById('btn-lrn-replay').disabled  = !captured;
   document.getElementById('btn-lrn-save').disabled    = !captured;
   document.getElementById('btn-lrn-discard').disabled = !captured;
   document.getElementById('btn-lrn-delete').disabled  = !saved;
+  document.getElementById('btn-lrn-delete-all').disabled = !connected || !hasAnyLearnedData;
 
   document.getElementById('btn-mode-proto').disabled   = !connected;
   document.getElementById('btn-mode-learned').disabled = !connected;
@@ -1841,6 +1844,10 @@ function handleLearnMsg(val) {
         learnActiveSlot = idx;
         updateLearnSlotGrid();
         updateLearnButtons();
+      } else if (idx < 0) {
+        learnActiveSlot = -1;
+        updateLearnSlotGrid();
+        updateLearnButtons();
       }
       break;
     }
@@ -1877,6 +1884,16 @@ function handleLearnMsg(val) {
       setLearnStatus('Capture discarded. Previously saved data (if any) is unchanged.', '');
       break;
 
+    case 'DELETED_ALL':
+      learnPendingCapture = false;
+      learnActiveSlot = -1;
+      learnSlotStates = Array(LEARN_NUM_SLOTS).fill('EMPTY');
+      updateLearnSlotGrid();
+      updateLearnButtons();
+      updateSaveChecklist();
+      setLearnStatus('All learned slots deleted. Ready for fresh learning.', 'ok');
+      break;
+
     default:
       addLog('rx', 'LRN:' + val);
   }
@@ -1909,6 +1926,14 @@ async function learnDeleteUi() {
   if (learnActiveSlot < 0) return;
   if (!confirm('Delete saved slot "' + LEARN_SLOT_NAMES[learnActiveSlot] + '"?')) return;
   await sendCmd('LRN:DELETE:' + learnActiveSlot);
+}
+
+async function learnDeleteAllUi() {
+  if (!connected) return;
+  const count = learnSlotStates.filter(state => state !== 'EMPTY').length;
+  if (count === 0) return;
+  if (!confirm('Delete all learned IR slots from device storage? This cannot be undone.')) return;
+  await sendCmd('LRN:DELETE_ALL');
 }
 
 // Reset learn UI on disconnect
