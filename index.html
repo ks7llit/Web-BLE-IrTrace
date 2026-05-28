@@ -1194,6 +1194,9 @@ function onWifiNetworkReceived(val) {
   if (val === 'NONE') {
     wifiList = [];
     updateWifiDropdown();
+    // NET:NONE means scan finished with 0 results — clear the "Scanning..." pill.
+    // NET:DONE is NOT sent when count=0, so this is the only place to clear it.
+    setPill('wifi-pill', 'pill pill-idle', 'No Networks');
     return;
   }
   if (val === 'DONE') {
@@ -1202,18 +1205,25 @@ function onWifiNetworkReceived(val) {
     return;
   }
 
-  // NET:Index:SSID:RSSI:Security
+  // Format: NET:<index>:<ssid>:<rssi>:<security>
+  // RSSI is always a negative integer; Security is always "Open" or "Secured".
+  // Neither can contain ':'. SSID can (e.g. "My:Network").
+  // Parse from the RIGHT so SSIDs with colons are handled correctly:
+  //   parts[0]              = index
+  //   parts[last]           = security
+  //   parts[last-1]         = rssi
+  //   parts[1 .. last-2]    = ssid (rejoined with ':')
   const parts = val.split(':');
-  if (parts.length < 4) return;
-  
+  if (parts.length < 4) return;  // need at least index + ssid-char + rssi + security
+
   const index = parseInt(parts[0]);
-  if (index === 0) wifiList = []; // Reset on first item
-  
-  wifiList.push({
-    ssid: parts[1],
-    rssi: parts[2],
-    sec:  parts[3]
-  });
+  if (index === 0) wifiList = []; // Reset list when first network of a new scan arrives
+
+  const sec  = parts[parts.length - 1];
+  const rssi = parts[parts.length - 2];
+  const ssid = parts.slice(1, parts.length - 2).join(':');
+
+  wifiList.push({ ssid, rssi, sec });
 }
 
 function resetWifiUi(pillText) {
