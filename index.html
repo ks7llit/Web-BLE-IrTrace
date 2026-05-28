@@ -47,6 +47,16 @@
   .brand-name { font-family: var(--mono); font-weight: 700; font-size: .95rem; }
   .brand-sub  { font-size: .63rem; color: var(--muted); font-family: var(--mono); }
   .brand-sub.ver-mismatch { color: var(--red); }
+  .header-actions { display: flex; align-items: center; gap: 8px; }
+  .guide-link {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 36px; padding: 8px 12px;
+    border: 1px solid var(--border); border-radius: 9px;
+    font-family: var(--sans); font-size: .82rem; font-weight: 700;
+    color: var(--accent); background: var(--surface2); text-decoration: none;
+    transition: all .15s;
+  }
+  .guide-link:hover { border-color: #b9cdfa; background: var(--accent-lt); }
   #btn-connect {
     display: flex; align-items: center; gap: 8px;
     padding: 9px 18px; border: none; border-radius: 9px;
@@ -62,6 +72,13 @@
     background: rgba(255,255,255,.6); flex-shrink: 0;
   }
   #btn-connect.conn .ble-dot { background: var(--red); box-shadow: 0 0 0 3px rgba(220,38,38,.2); }
+
+  @media (max-width: 460px) {
+    header { padding: 0 12px; }
+    .brand-sub { display: none; }
+    .guide-link { padding: 8px 10px; font-size: .76rem; }
+    #btn-connect { padding: 9px 12px; }
+  }
 
   /* ── STATUS STRIP ───────────────────────────────────────── */
   #status-strip {
@@ -444,10 +461,13 @@
       <div class="brand-sub" id="version-line">ESP32-C5 &middot; WEB -- / FW --</div>
     </div>
   </div>
-  <button id="btn-connect" onclick="toggleConnect()">
-    <span class="ble-dot"></span>
-    <span id="btn-label">Connect</span>
-  </button>
+  <div class="header-actions">
+    <a class="guide-link" href="manual.html" target="_blank" rel="noopener">Guide</a>
+    <button id="btn-connect" onclick="toggleConnect()">
+      <span class="ble-dot"></span>
+      <span id="btn-label">Connect</span>
+    </button>
+  </div>
 </header>
 
 <div id="status-strip">
@@ -634,29 +654,6 @@
     </div>
   </div>
 
-  <!-- ── SAVE CONFIGURATION ─────────────────────────────── -->
-  <div class="card" id="save-card">
-    <div class="card-head">
-      <span class="card-label">Save Configuration</span>
-      <span class="pill pill-idle" id="save-pill">Pending</span>
-    </div>
-    <div class="save-body">
-      <div class="save-checklist">
-        <div class="check-item" id="chk-wifi">
-          <span class="chk-icon">○</span>
-          <span class="chk-lbl" id="chk-wifi-lbl">Wi-Fi network — not selected</span>
-        </div>
-        <div class="check-item" id="chk-proto">
-          <span class="chk-icon">○</span>
-          <span class="chk-lbl" id="chk-proto-lbl">IR protocol — not tested yet</span>
-        </div>
-      </div>
-      <button class="btn-save-all" id="btn-save-all" disabled onclick="submitAll()">
-        💾 SAVE ALL — Configure Device
-      </button>
-    </div>
-  </div>
-
   <!-- ── UNSUPPORTED AC SETUP (Learn Fallback) ─────────── -->
   <div class="card" id="learn-card">
     <div class="card-head">
@@ -742,6 +739,29 @@
     </div>
   </div>
 
+  <!-- ── SAVE CONFIGURATION ─────────────────────────────── -->
+  <div class="card" id="save-card">
+    <div class="card-head">
+      <span class="card-label">Save Configuration</span>
+      <span class="pill pill-idle" id="save-pill">Pending</span>
+    </div>
+    <div class="save-body">
+      <div class="save-checklist">
+        <div class="check-item" id="chk-wifi">
+          <span class="chk-icon">○</span>
+          <span class="chk-lbl" id="chk-wifi-lbl">Wi-Fi network — not selected</span>
+        </div>
+        <div class="check-item" id="chk-proto">
+          <span class="chk-icon">○</span>
+          <span class="chk-lbl" id="chk-proto-lbl">IR protocol — not tested yet</span>
+        </div>
+      </div>
+      <button class="btn-save-all" id="btn-save-all" disabled onclick="submitAll()">
+        💾 SAVE ALL — Configure Device
+      </button>
+    </div>
+  </div>
+
   <div class="footer">IrTrace · ESP32-C5 · RX · BLE · Chrome only</div>
 </div>
 
@@ -752,7 +772,7 @@
 const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const TX_UUID      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 const RX_UUID      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
-const IRTRACE_WEB_VERSION = 'v@0.0.2';
+const IRTRACE_WEB_VERSION = 'v@0.0.3';
 
 let bleDevice = null, rxChar = null, connected = false;
 let firmwareVersion = '';
@@ -1002,8 +1022,10 @@ const ALL_VARIANTS = [
 // State
 // ============================================================
 let testTemp       = 24;
-let activeVariantId   = null;  // last variant sent via 'v <id>'
+let activeVariantId   = null;  // last variant confirmed by TX:OK
 let activeVariantName = '';
+let pendingTestVariant = null;
+let saveTxn = null;
 let wifiList = [];
 let adminUnlocked = false;
 let findRxActive  = false;     // find-receiver mode state
@@ -1043,6 +1065,8 @@ function disconnect() {
 async function onConnected() {
   connected = true;
   firmwareVersion = '';
+  resetConfirmedProtocol();
+  resetWifiUi('Waiting for device scan...');
   updateVersionLine();
   document.getElementById('btn-connect').classList.add('conn');
   document.getElementById('btn-label').textContent = 'Disconnect';
@@ -1054,17 +1078,14 @@ async function onConnected() {
   document.getElementById('discovery-card').style.display = 'block';
   setPill('ir-pill', 'pill pill-live', 'Live');
   addLog('sys', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
-
-  // Firmware version is shown in the header to verify HTML/FW pairing.
-  await sendCmd('ver');
-  // Request Wi-Fi list if not already sent
-  await sendCmd('wget');
-  // Firmware sends learnSendAllStatus() on connect; also request explicitly in case of reconnect
-  await sendCmd('LRN:STATUS');
 }
 
 function onDisconnected() {
   connected = false; rxChar = null;
+  failSaveTransaction('Disconnected');
+  pendingTestVariant = null;
+  resetConfirmedProtocol();
+  resetWifiUi('Scan Ready');
   firmwareVersion = '';
   updateVersionLine();
   document.getElementById('btn-connect').classList.remove('conn');
@@ -1073,7 +1094,14 @@ function onDisconnected() {
   setControls(false);
   resetAdminUi();
   setFindRxState(false);   // reset find mode UI on disconnect
-  updateSaveChecklist();   // reflect disconnected state
+  updateSaveChecklist();   // reflect disconnected state (sets disabled, not text/class)
+  // Reset save button text and state — updateSaveChecklist() only touches .disabled,
+  // so the success/saving classes and text must be cleared explicitly here.
+  const saveBtn = document.getElementById('btn-save-all');
+  if (saveBtn) {
+    saveBtn.classList.remove('saving', 'success');
+    saveBtn.textContent = '💾 SAVE ALL — Configure Device';
+  }
   setPill('ir-pill', 'pill pill-idle', 'Waiting');
   setPill('wifi-pill', 'pill pill-idle', 'Scan Ready');
   addLog('sys', 'Disconnected');
@@ -1091,11 +1119,27 @@ function onNotify(event) {
   if (ci === -1) return;
   const key = raw.substring(0, ci).toUpperCase();
   const val = raw.substring(ci + 1).trim();
+  noteSaveAck(key, val);
 
   switch (key) {
     case 'FW':
       firmwareVersion = val;
       updateVersionLine();
+      break;
+    case 'VAR':
+      syncFirmwareVariant(val);
+      break;
+    case 'PWR':
+      addLog('sys', 'TX power state: ' + val);
+      break;
+    case 'TEMP':
+      syncTxTemp(val);
+      break;
+    case 'RPT':
+      addLog('sys', 'TX repeat: ' + val);
+      break;
+    case 'TX':
+      if (val === 'OK') confirmPendingProtocolTest();
       break;
     case 'PROTOCOL': onProtocolReceived(val);    break;
     case 'POWER':    updateIR('power',    val);  break;
@@ -1134,6 +1178,7 @@ function onNotify(event) {
       if (val === 'PULSE') { flashFindPulse();       break; }
       break;
     case 'ERR':
+      pendingTestVariant = null;
       addLog('err', val);
       break;
     case 'LRN':
@@ -1169,6 +1214,21 @@ function onWifiNetworkReceived(val) {
     rssi: parts[2],
     sec:  parts[3]
   });
+}
+
+function resetWifiUi(pillText) {
+  wifiList = [];
+  wifiReady = false;
+  const sel = document.getElementById('sel-wifi');
+  if (sel) {
+    sel.innerHTML = '<option value="-1">Waiting for networks...</option>';
+  }
+  const manualEl = document.getElementById('inp-wifi-manual');
+  if (manualEl) manualEl.value = '';
+  const manualWrap = document.getElementById('wifi-manual-wrap');
+  if (manualWrap) manualWrap.style.display = 'none';
+  setPill('wifi-pill', 'pill pill-idle', pillText || 'Scan Ready');
+  updateSaveChecklist();
 }
 
 function updateWifiDropdown() {
@@ -1354,6 +1414,10 @@ function updateSaveChecklist() {
   setPill('save-pill',
     allReady ? 'pill pill-live' : 'pill pill-idle',
     allReady ? 'Ready' : 'Pending');
+  const saveBtn = document.getElementById('btn-save-all');
+  if (saveBtn && !saveBtn.classList.contains('saving')) {
+    saveBtn.disabled = !connected || !allReady;
+  }
 }
 
 // ============================================================
@@ -1405,32 +1469,46 @@ async function submitAll() {
   if (btn) { btn.disabled = true; btn.classList.add('saving'); btn.textContent = '⏳ Saving...'; }
 
   // ── Send commands in sequence ─────────────────────────────
-  addLog('sys', 'Saving Wi-Fi credentials...');
-  await sendCmd(`WIFI_SET:${ssid}\n${pass}`);
+  const saveMode = learnCtrlMode;
+  const savePromise = beginSaveTransaction(saveMode);
+  try {
+    addLog('sys', 'Saving Wi-Fi credentials...');
+    if (!(await sendCmd(`WIFI_SET:${ssid}\n${pass}`))) throw new Error('Wi-Fi command send failed');
 
-  if (learnCtrlMode === 'LEARNED') {
-    addLog('sys', 'Using learned fallback slots for IR control...');
-    await sendCmd('LRN:MODE:LEARNED');
-  } else {
-    addLog('sys', 'Saving protocol control mode and IR variant...');
-    await sendCmd('LRN:MODE:PROTOCOL');
-    await sendCmd('save');
-  }
+    if (saveMode === 'LEARNED') {
+      addLog('sys', 'Using learned fallback slots for IR control...');
+      if (!(await sendCmd('LRN:MODE:LEARNED'))) throw new Error('Learned mode command send failed');
+    } else {
+      addLog('sys', 'Saving protocol control mode and IR variant...');
+      if (!(await sendCmd('LRN:MODE:PROTOCOL'))) throw new Error('Protocol mode command send failed');
+      if (!(await sendCmd('save'))) throw new Error('Variant save command send failed');
+    }
 
-  // ── Success ───────────────────────────────────────────────
-  addLog('sys', learnCtrlMode === 'LEARNED'
-    ? '✅ Device configured — WiFi + Learned Fallback ready'
-    : '✅ Device configured — WiFi + Protocol saved');
-  setPill('save-pill', 'pill pill-live', 'Saved ✅');
-  if (btn) {
-    btn.classList.remove('saving');
-    btn.classList.add('success');
-    btn.textContent = '✅ Configuration Saved!';
-    setTimeout(() => {
-      btn.classList.remove('success');
+    await savePromise;
+    addLog('sys', saveMode === 'LEARNED'
+      ? '✅ Device configured — WiFi + Learned Fallback ready'
+      : '✅ Device configured — WiFi + Protocol saved');
+    setPill('save-pill', 'pill pill-live', 'Saved ✅');
+    if (btn) {
+      btn.classList.remove('saving');
+      btn.classList.add('success');
+      btn.textContent = '✅ Saved! Restarting device...';
+    }
+    addLog('sys', 'Sending restart command — device will reboot and begin normal operation.');
+    setTimeout(async () => {
+      await sendCmd('restart');
+      // Device restarts; BLE disconnects automatically — no further UI reset needed
+    }, 1500);
+  } catch (err) {
+    failSaveTransaction(err.message || String(err));
+    try { await savePromise; } catch (_) {}
+    addLog('err', 'Save failed: ' + (err.message || err));
+    setPill('save-pill', 'pill pill-idle', 'Pending');
+    if (btn) {
+      btn.classList.remove('saving');
       btn.textContent = '💾 SAVE ALL — Configure Device';
-      btn.disabled = false;
-    }, 3000);
+      updateSaveChecklist();
+    }
   }
 }
 
@@ -1555,17 +1633,13 @@ async function testSection(section, action) {
   else if (action === 'on')   cmd = 'on ' + testTemp;
   else                        cmd = 't '  + testTemp;
 
-  // Send variant select, then the command
-  await sendCmd('v ' + varId);
-  await sendCmd(cmd);
-
-  // Track active variant — updates checklist and enables Save All
-  activeVariantId   = varId;
-  activeVariantName = name;
-  document.getElementById('active-name').textContent = name;
-  document.getElementById('active-tag').style.display = 'block';
-  updateSaveChecklist();
-
+  // Send variant select, then the command; TX:OK confirms the test.
+  if (!(await sendCmd('v ' + varId))) return;
+  pendingTestVariant = { id: varId, name };
+  if (!(await sendCmd(cmd))) {
+    pendingTestVariant = null;
+    return;
+  }
   addLog('sys', 'Testing: ' + name + ' — ' + cmd);
 }
 
@@ -1642,11 +1716,15 @@ function updateIR(field, val) {
 // BLE send
 // ============================================================
 async function sendCmd(cmd) {
-  if (!connected || !rxChar) { addLog('err', 'Not connected'); return; }
+  if (!connected || !rxChar) { addLog('err', 'Not connected'); return false; }
   try {
     await rxChar.writeValue(enc.encode(cmd));
     addLog('tx', cmd);
-  } catch(err) { addLog('err', 'Send failed: ' + err.message); }
+    return true;
+  } catch(err) {
+    addLog('err', 'Send failed: ' + err.message);
+    return false;
+  }
 }
 
 async function sendManual() {
@@ -1666,7 +1744,7 @@ function setControls(on) {
    'btn-tminus','btn-tplus','sel-lookup','sel-universal',
    'lk-off','lk-on','lk-temp','un-off','un-on','un-temp',
    'sel-wifi','inp-wifi-pass','inp-wifi-manual','btn-wifi-rescan',
-   'inp-admin-pass','btn-admin-unlock','btn-find-rx','btn-save-all']
+   'inp-admin-pass','btn-admin-unlock','btn-find-rx']
     .forEach(id => { const e = document.getElementById(id); if (e) e.disabled = !on; });
 
   if (!on) {
@@ -1687,6 +1765,95 @@ function setStrip(type, msg) {
 function setPill(id, cls, txt) {
   const el = document.getElementById(id);
   if (el) { el.className = cls; el.textContent = txt; }
+}
+
+function variantNameById(id) {
+  const v = ALL_VARIANTS.find(v => v.id === id);
+  return v ? v.name : 'Variant ' + id;
+}
+
+function setConfirmedVariant(id, name) {
+  activeVariantId = id;
+  activeVariantName = name || variantNameById(id);
+  document.getElementById('active-name').textContent = activeVariantName;
+  document.getElementById('active-tag').style.display = 'block';
+  updateSaveChecklist();
+}
+
+function resetConfirmedProtocol() {
+  activeVariantId = null;
+  activeVariantName = '';
+  pendingTestVariant = null;
+  const activeNameEl = document.getElementById('active-name');
+  const activeTagEl = document.getElementById('active-tag');
+  if (activeNameEl) activeNameEl.textContent = '—';
+  if (activeTagEl) activeTagEl.style.display = 'none';
+}
+
+function syncFirmwareVariant(val) {
+  const id = parseInt(val, 10);
+  if (!Number.isFinite(id)) return;
+  const sel = document.getElementById('sel-universal');
+  if (sel) sel.value = String(id);
+}
+
+function syncTxTemp(val) {
+  const temp = parseInt(val, 10);
+  if (!Number.isFinite(temp)) return;
+  testTemp = Math.max(16, Math.min(30, temp));
+  document.getElementById('temp-display').innerHTML = testTemp + '<span>°C</span>';
+}
+
+function confirmPendingProtocolTest() {
+  if (!pendingTestVariant) return;
+  setConfirmedVariant(pendingTestVariant.id, pendingTestVariant.name);
+  addLog('sys', 'Protocol confirmed: ' + pendingTestVariant.name);
+  pendingTestVariant = null;
+}
+
+function beginSaveTransaction(mode) {
+  if (saveTxn) failSaveTransaction('Previous save interrupted');
+  const pending = new Set(mode === 'LEARNED'
+    ? ['WIFI', 'MODE']
+    : ['WIFI', 'MODE', 'SAVE']);
+
+  return new Promise((resolve, reject) => {
+    saveTxn = {
+      mode,
+      pending,
+      resolve,
+      reject,
+      timer: setTimeout(() => failSaveTransaction('Timed out waiting for firmware ACK'), 10000),
+    };
+  });
+}
+
+function completeSaveTransaction() {
+  if (!saveTxn || saveTxn.pending.size > 0) return;
+  clearTimeout(saveTxn.timer);
+  const resolve = saveTxn.resolve;
+  saveTxn = null;
+  resolve();
+}
+
+function failSaveTransaction(reason) {
+  if (!saveTxn) return;
+  clearTimeout(saveTxn.timer);
+  const reject = saveTxn.reject;
+  saveTxn = null;
+  reject(new Error(reason));
+}
+
+function noteSaveAck(key, val) {
+  if (!saveTxn) return;
+  if (key === 'ERR') {
+    failSaveTransaction(val || 'Firmware error');
+    return;
+  }
+  if (key === 'WIFI' && val === 'OK') saveTxn.pending.delete('WIFI');
+  if (key === 'SAVE' && val === 'OK') saveTxn.pending.delete('SAVE');
+  if (key === 'LRN' && val === 'MODE:' + saveTxn.mode) saveTxn.pending.delete('MODE');
+  completeSaveTransaction();
 }
 
 function updateVersionLine() {
@@ -1780,6 +1947,7 @@ function updateLearnButtons() {
   const captured = hasSlot && state === 'CAPTURED';
   const saved    = hasSlot && state === 'SAVED';
   const hasAnyLearnedData = learnSlotStates.some(state => state !== 'EMPTY');
+  const allSlotsSaved = learnSlotStates.every(state => state === 'SAVED');
 
   document.getElementById('btn-lrn-learn').disabled   = !hasSlot || saved;
   document.getElementById('btn-lrn-replay').disabled  = !captured;
@@ -1789,7 +1957,7 @@ function updateLearnButtons() {
   document.getElementById('btn-lrn-delete-all').disabled = !connected || !hasAnyLearnedData;
 
   document.getElementById('btn-mode-proto').disabled   = !connected;
-  document.getElementById('btn-mode-learned').disabled = !connected;
+  document.getElementById('btn-mode-learned').disabled = !connected || !allSlotsSaved;
 }
 
 function applyLearnModeUi(mode) {
@@ -1806,6 +1974,7 @@ function applyLearnModeUi(mode) {
     if (bp)   bp.className  = 'btn-lrn-mode active-protocol';
     if (bl)   bl.className  = 'btn-lrn-mode';
   }
+  updateLearnButtons();
   updateSaveChecklist();
 }
 
@@ -1902,6 +2071,10 @@ function handleLearnMsg(val) {
 // ── UI action handlers ────────────────────────────────────────
 
 async function setLearnMode(mode) {
+  if (mode === 'LEARNED' && !learnSlotStates.every(state => state === 'SAVED')) {
+    addLog('err', 'Save all 16 learned slots before enabling Learned Fallback');
+    return;
+  }
   await sendCmd('LRN:MODE:' + mode);
 }
 
