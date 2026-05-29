@@ -1078,6 +1078,11 @@ async function onConnected() {
   document.getElementById('discovery-card').style.display = 'block';
   setPill('ir-pill', 'pill pill-live', 'Live');
   addLog('sys', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
+  // Request Wi-Fi list explicitly now that CCCD is enabled, the notification
+  // listener is registered, and resetWifiUi() has already cleared stale state.
+  // This replaces the device-side auto-push (removed from onConnect in BLE_CONFIG.h)
+  // which raced against JS initialisation and caused "No networks found".
+  await sendCmd("wget");
 }
 
 function onDisconnected() {
