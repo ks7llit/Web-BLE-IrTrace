@@ -1228,7 +1228,11 @@ function onWifiNetworkReceived(val) {
   const rssi = parts[parts.length - 2];
   const ssid = parts.slice(1, parts.length - 2).join(':');
 
-  wifiList.push({ ssid, rssi, sec });
+  // Deduplicate by SSID — device list is already sorted strongest-first,
+  // so the first occurrence of each SSID is the best signal. Skip duplicates.
+  if (!wifiList.find(n => n.ssid === ssid)) {
+    wifiList.push({ ssid, rssi, sec });
+  }
 }
 
 function resetWifiUi(pillText) {
