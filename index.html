@@ -628,7 +628,7 @@
       <!-- ── SECTION B: All Protocols ── -->
       <div class="section-head">
         <span class="section-label">All Protocols</span>
-        <span class="section-badge">69 variants</span>
+        <span class="section-badge">69 variants (0–68)</span>
       </div>
 
       <select class="proto-select" id="sel-universal" disabled onchange="onUniversalChange()">
@@ -982,8 +982,10 @@ const PROTOCOL_LOOKUP = {
 // TX VARIANTS — universal dropdown
 // IDs match kVariantRx[] indices in IR_RECEIVER.h exactly.
 // RAW stubs and entries without IRac class are intentionally
-// omitted (noted as comments). Non-sequential IDs are correct
-// — the gaps are the omitted stub entries.
+// IDs match AC_xxx #defines in IR_TRANSMITTER.h exactly (sequential, no gaps).
+// Stubs (Daikin200, Daikin312, HitachiAC2/3, Carrier32/40/84/128, Sanyo152)
+// have been removed — they had no TX class and caused an index offset that
+// made every protocol from Daikin216 onwards fire the wrong IR command.
 // ============================================================
 const ALL_VARIANTS = [
   { id:  0, name: 'Mitsubishi STD 144-bit'        },
@@ -998,67 +1000,63 @@ const ALL_VARIANTS = [
   { id:  9, name: 'Daikin152 152-bit'              },
   { id: 10, name: 'Daikin160 160-bit'              },
   { id: 11, name: 'Daikin176 176-bit'              },
-  { id: 12, name: 'Daikin200 200-bit'              },
-  { id: 13, name: 'Daikin216 216-bit'              },
-  // id 14 = DAIKIN312 RAW stub — omitted
-  { id: 15, name: 'Fujitsu 56-128-bit'             },
-  { id: 16, name: 'Panasonic 216-bit'              },
-  { id: 17, name: 'Panasonic32 32-bit (toggle)'    },
-  { id: 18, name: 'Samsung 112/168-bit'            },
-  { id: 19, name: 'LG Standard — GE6711AR2853M'   },
-  { id: 20, name: 'Hitachi STD 224-bit'            },
-  { id: 21, name: 'Hitachi AC1 104-bit'            },
-  // id 22 = HITACHI_AC2 RAW stub, id 23 = HITACHI_AC3 (no IRac class) — omitted
-  { id: 24, name: 'Hitachi AC264 264-bit'          },
-  { id: 25, name: 'Hitachi AC296 296-bit'          },
-  { id: 26, name: 'Hitachi AC344 344-bit'          },
-  { id: 27, name: 'Hitachi AC424 424-bit'          },
-  { id: 28, name: 'Toshiba 72-bit+'               },
-  { id: 29, name: 'Haier STD 72-bit'              },
-  { id: 30, name: 'Haier YRW02 112-bit'           },
-  { id: 31, name: 'Haier AC160 160-bit'           },
-  { id: 32, name: 'Haier AC176 176-bit'           },
-  { id: 33, name: 'Kelvinator 128-bit'            },
-  { id: 34, name: 'Gree 64-bit'                   },
-  { id: 35, name: 'Midea 48-bit'                  },
-  { id: 36, name: 'Midea24 24-bit'                },
-  { id: 37, name: 'Coolix 24-bit'                 },
-  { id: 38, name: 'Coolix48 48-bit'               },
-  // id 39,40 = Carrier32/40 RAW, id 42,43 = Carrier84/128 RAW — omitted
-  { id: 41, name: 'Carrier64 64-bit'              },
-  { id: 44, name: 'Sharp 104-bit'                 },
-  { id: 45, name: 'Whirlpool 168-bit (toggle)'    },
-  { id: 46, name: 'Electra / AUX 104-bit'         },
-  { id: 47, name: 'Vestel 56-bit'                 },
-  { id: 48, name: 'TCL 112-bit (TAC09CHSD)'       },
-  { id: 49, name: 'TCL 96-bit (GZ055BE1)'         },
-  { id: 50, name: 'Teco 35-bit'                   },
-  { id: 51, name: 'Goodweather 48-bit'            },
-  { id: 52, name: 'Neoclima 96-bit'               },
-  { id: 53, name: 'Amcor 64-bit'                  },
-  { id: 54, name: 'Airwell 34-bit (toggle)'       },
-  { id: 55, name: "De'Longhi 64-bit"              },
-  { id: 56, name: 'Sanyo STD 72-bit'              },
-  { id: 57, name: 'Sanyo88 88-bit'                },
-  // id 58 = SANYO152 RAW stub — omitted
-  { id: 59, name: 'Voltas 120-bit'                },
-  { id: 60, name: 'Mirage 120-bit'                },
-  { id: 61, name: 'Corona 168-bit'                },
-  { id: 62, name: 'Airton 56-bit'                 },
-  { id: 63, name: 'EcoClim 56-bit'                },
-  { id: 64, name: 'Kelon 48-bit'                  },
-  { id: 65, name: 'Kelon168 168-bit'              },
-  { id: 66, name: 'Rhoss 96-bit'                  },
-  { id: 67, name: 'Technibel 56-bit'              },
-  { id: 68, name: 'Transcold 136-bit'             },
-  { id: 69, name: 'Trotec STD 56-bit'             },
-  { id: 70, name: 'Trotec3550 120-bit'            },
-  { id: 71, name: 'Truma (variable)'              },
-  { id: 72, name: 'Bosch144 144-bit'              },
-  { id: 73, name: 'Argo WREM2 96-bit'             },
-  { id: 74, name: 'Argo WREM3 (variable)'         },
-  { id: 75, name: 'Eurom 96-bit'                  },
-  { id: 76, name: 'York 88-bit'                   },
+  { id: 12, name: 'Daikin216 216-bit'              },
+  { id: 13, name: 'Fujitsu 56-128-bit'             },
+  { id: 14, name: 'Panasonic 216-bit'              },
+  { id: 15, name: 'Panasonic32 32-bit (toggle)'    },
+  { id: 16, name: 'Samsung 112/168-bit'            },
+  { id: 17, name: 'LG Standard — GE6711AR2853M'   },
+  { id: 18, name: 'Hitachi STD 224-bit'            },
+  { id: 19, name: 'Hitachi AC1 104-bit'            },
+  { id: 20, name: 'Hitachi AC264 264-bit'          },
+  { id: 21, name: 'Hitachi AC296 296-bit'          },
+  { id: 22, name: 'Hitachi AC344 344-bit'          },
+  { id: 23, name: 'Hitachi AC424 424-bit'          },
+  { id: 24, name: 'Toshiba 72-bit+'               },
+  { id: 25, name: 'Haier STD 72-bit'              },
+  { id: 26, name: 'Haier YRW02 112-bit'           },
+  { id: 27, name: 'Haier AC160 160-bit'           },
+  { id: 28, name: 'Haier AC176 176-bit'           },
+  { id: 29, name: 'Kelvinator 128-bit'            },
+  { id: 30, name: 'Gree 64-bit'                   },
+  { id: 31, name: 'Midea 48-bit'                  },
+  { id: 32, name: 'Midea24 24-bit'                },
+  { id: 33, name: 'Coolix 24-bit'                 },
+  { id: 34, name: 'Coolix48 48-bit'               },
+  { id: 35, name: 'Carrier64 64-bit'              },
+  { id: 36, name: 'Sharp 104-bit'                 },
+  { id: 37, name: 'Whirlpool 168-bit (toggle)'    },
+  { id: 38, name: 'Electra / AUX 104-bit'         },
+  { id: 39, name: 'Vestel 56-bit'                 },
+  { id: 40, name: 'TCL 112-bit (TAC09CHSD)'       },
+  { id: 41, name: 'TCL 96-bit (GZ055BE1)'         },
+  { id: 42, name: 'Teco 35-bit'                   },
+  { id: 43, name: 'Goodweather 48-bit'            },
+  { id: 44, name: 'Neoclima 96-bit'               },
+  { id: 45, name: 'Amcor 64-bit'                  },
+  { id: 46, name: 'Airwell 34-bit (toggle)'       },
+  { id: 47, name: "De'Longhi 64-bit"              },
+  { id: 48, name: 'Sanyo STD 72-bit'              },
+  { id: 49, name: 'Sanyo88 88-bit'                },
+  { id: 50, name: 'Voltas 120-bit'                },
+  { id: 51, name: 'Mirage 120-bit'                },
+  { id: 52, name: 'Corona 168-bit'                },
+  { id: 53, name: 'Airton 56-bit'                 },
+  { id: 54, name: 'EcoClim 56-bit'                },
+  { id: 55, name: 'Kelon 48-bit'                  },
+  { id: 56, name: 'Kelon168 168-bit'              },
+  { id: 57, name: 'Rhoss 96-bit'                  },
+  { id: 58, name: 'Technibel 56-bit'              },
+  { id: 59, name: 'Transcold 136-bit'             },
+  { id: 60, name: 'Trotec STD 56-bit'             },
+  { id: 61, name: 'Trotec3550 120-bit'            },
+  { id: 62, name: 'Truma (variable)'              },
+  { id: 63, name: 'Bosch144 144-bit'              },
+  { id: 64, name: 'Argo WREM2 96-bit'             },
+  { id: 65, name: 'Argo WREM3 (variable)'         },
+  { id: 66, name: 'Eurom 96-bit'                  },
+  { id: 67, name: 'York 88-bit'                   },
+  { id: 68, name: 'LG2 — AKB75215403'             },
 ];
 
 // ============================================================
