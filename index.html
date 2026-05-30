@@ -784,6 +784,9 @@ const enc = new TextEncoder(), dec = new TextDecoder();
 // Key  : decoded protocol string (from PROTOCOL: BLE message)
 // Value: ordered candidate array [[variantId, displayName], ...]
 // ============================================================
+// IDs in this table match AC_xxx #defines in IR_TRANSMITTER.h exactly.
+// Old comments referencing "kVariantRx[]" indices have been updated —
+// those indices shifted when the 9 stub entries were removed from kVariantRx[].
 const PROTOCOL_LOOKUP = {
   // ── Mitsubishi Electric ───────────────────────────────────
   'MITSUBISHI_AC':       [[0,'Mitsubishi STD 144-bit'],[1,'Mitsubishi 112-bit'],[2,'Mitsubishi 136-bit']],
@@ -799,180 +802,180 @@ const PROTOCOL_LOOKUP = {
   'MITSUBISHI_HEAVY_88': [[4,'Mitsubishi Heavy 88-bit'],[3,'Mitsubishi Heavy 152-bit']],
 
   // ── Daikin ───────────────────────────────────────────────
-  // kVariantRx[]: DAIKIN200=12, DAIKIN216=13, DAIKIN312 RAW=14 (omitted)
-  'DAIKIN':    [[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit'],[9,'Daikin152'],[10,'Daikin160'],[11,'Daikin176'],[13,'Daikin216']],
-  'DAIKIN2':   [[6,'Daikin2 312-bit'],[5,'Daikin STD 280-bit'],[9,'Daikin152'],[10,'Daikin160'],[11,'Daikin176'],[13,'Daikin216']],
+  // TX #defines: DAIKIN_STD=5, DAIKIN2=6, DAIKIN64=7, DAIKIN128=8,
+  //              DAIKIN152=9, DAIKIN160=10, DAIKIN176=11, DAIKIN216=12
+  // DAIKIN200 / DAIKIN312 have no TX class — best-effort fallback to std Daikin
+  'DAIKIN':    [[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit'],[9,'Daikin152'],[10,'Daikin160'],[11,'Daikin176'],[12,'Daikin216']],
+  'DAIKIN2':   [[6,'Daikin2 312-bit'],[5,'Daikin STD 280-bit'],[9,'Daikin152'],[10,'Daikin160'],[11,'Daikin176'],[12,'Daikin216']],
   'DAIKIN64':  [[7,'Daikin64 64-bit (toggle)'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
   'DAIKIN128': [[8,'Daikin128 128-bit (toggle)'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
   'DAIKIN152': [[9,'Daikin152 152-bit'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
   'DAIKIN160': [[10,'Daikin160 160-bit'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
   'DAIKIN176': [[11,'Daikin176 176-bit'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
-  'DAIKIN216': [[13,'Daikin216 216-bit'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
-  // DAIKIN200 / DAIKIN312 — no TX class, best-effort fallback to standard Daikin variants
-  'DAIKIN200': [[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit'],[9,'Daikin152'],[10,'Daikin160'],[11,'Daikin176'],[13,'Daikin216']],
-  'DAIKIN312': [[6,'Daikin2 312-bit'],[5,'Daikin STD 280-bit'],[9,'Daikin152'],[10,'Daikin160'],[11,'Daikin176'],[13,'Daikin216']],
+  'DAIKIN216': [[12,'Daikin216 216-bit'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
+  'DAIKIN200': [[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit'],[9,'Daikin152'],[10,'Daikin160'],[11,'Daikin176'],[12,'Daikin216']],
+  'DAIKIN312': [[6,'Daikin2 312-bit'],[5,'Daikin STD 280-bit'],[9,'Daikin152'],[10,'Daikin160'],[11,'Daikin176'],[12,'Daikin216']],
 
   // ── Fujitsu / Panasonic (cross-check — ordering matters) ─
-  // kVariantRx[]: Fujitsu=15, Panasonic=16, Panasonic32=17
-  'FUJITSU_AC':    [[15,'Fujitsu 56-128-bit'],[16,'Panasonic 216-bit']],
-  'PANASONIC_AC':  [[16,'Panasonic 216-bit'],[15,'Fujitsu 56-128-bit']],
-  'PANASONIC_AC32':[[17,'Panasonic32 32-bit (toggle)'],[16,'Panasonic 216-bit'],[15,'Fujitsu 56-128-bit']],
+  // TX #defines: FUJITSU=13, PANASONIC=14, PANASONIC32=15
+  'FUJITSU_AC':    [[13,'Fujitsu 56-128-bit'],[14,'Panasonic 216-bit']],
+  'PANASONIC_AC':  [[14,'Panasonic 216-bit'],[13,'Fujitsu 56-128-bit']],
+  'PANASONIC_AC32':[[15,'Panasonic32 32-bit (toggle)'],[14,'Panasonic 216-bit'],[13,'Fujitsu 56-128-bit']],
 
   // ── Samsung ──────────────────────────────────────────────
-  // kVariantRx[]: Samsung=18
-  'SAMSUNG_AC': [[18,'Samsung 112/168-bit']],
+  // TX #define: SAMSUNG=16
+  'SAMSUNG_AC': [[16,'Samsung 112/168-bit']],
 
   // ── LG ───────────────────────────────────────────────────
-  // kVariantRx[]: LG=19. LG2 has no kVariantRx entry — omitted.
-  'LG':  [[19,'LG Standard (GE6711AR2853M)']],
+  // TX #defines: LG=17, LG2=68
+  'LG':  [[17,'LG Standard (GE6711AR2853M)']],
+  'LG2': [[68,'LG2 — AKB75215403']],
 
   // ── Hitachi ──────────────────────────────────────────────
-  // kVariantRx[]: STD=20, AC1=21, AC2 RAW=22 (omitted), AC3=23 (omitted),
-  //               AC264=24, AC296=25, AC344=26, AC424=27
-  'HITACHI_AC':    [[20,'Hitachi STD 224-bit'],[21,'Hitachi AC1 104-bit'],[27,'Hitachi AC424'],[26,'Hitachi AC344'],[24,'Hitachi AC264'],[25,'Hitachi AC296']],
-  'HITACHI_AC1':   [[21,'Hitachi AC1 104-bit'],[20,'Hitachi STD 224-bit'],[27,'Hitachi AC424'],[26,'Hitachi AC344'],[24,'Hitachi AC264'],[25,'Hitachi AC296']],
-  'HITACHI_AC264': [[24,'Hitachi AC264 264-bit'],[27,'Hitachi AC424'],[26,'Hitachi AC344'],[25,'Hitachi AC296'],[20,'Hitachi STD 224-bit'],[21,'Hitachi AC1']],
-  'HITACHI_AC296': [[25,'Hitachi AC296 296-bit'],[27,'Hitachi AC424'],[26,'Hitachi AC344'],[24,'Hitachi AC264'],[20,'Hitachi STD 224-bit'],[21,'Hitachi AC1']],
-  'HITACHI_AC344': [[26,'Hitachi AC344 344-bit'],[27,'Hitachi AC424'],[25,'Hitachi AC296'],[24,'Hitachi AC264'],[20,'Hitachi STD 224-bit'],[21,'Hitachi AC1']],
-  'HITACHI_AC424': [[27,'Hitachi AC424 424-bit'],[26,'Hitachi AC344'],[25,'Hitachi AC296'],[24,'Hitachi AC264'],[20,'Hitachi STD 224-bit'],[21,'Hitachi AC1']],
+  // TX #defines: STD=18, AC1=19, AC264=20, AC296=21, AC344=22, AC424=23
+  'HITACHI_AC':    [[18,'Hitachi STD 224-bit'],[19,'Hitachi AC1 104-bit'],[23,'Hitachi AC424'],[22,'Hitachi AC344'],[20,'Hitachi AC264'],[21,'Hitachi AC296']],
+  'HITACHI_AC1':   [[19,'Hitachi AC1 104-bit'],[18,'Hitachi STD 224-bit'],[23,'Hitachi AC424'],[22,'Hitachi AC344'],[20,'Hitachi AC264'],[21,'Hitachi AC296']],
+  'HITACHI_AC264': [[20,'Hitachi AC264 264-bit'],[23,'Hitachi AC424'],[22,'Hitachi AC344'],[21,'Hitachi AC296'],[18,'Hitachi STD 224-bit'],[19,'Hitachi AC1']],
+  'HITACHI_AC296': [[21,'Hitachi AC296 296-bit'],[23,'Hitachi AC424'],[22,'Hitachi AC344'],[20,'Hitachi AC264'],[18,'Hitachi STD 224-bit'],[19,'Hitachi AC1']],
+  'HITACHI_AC344': [[22,'Hitachi AC344 344-bit'],[23,'Hitachi AC424'],[21,'Hitachi AC296'],[20,'Hitachi AC264'],[18,'Hitachi STD 224-bit'],[19,'Hitachi AC1']],
+  'HITACHI_AC424': [[23,'Hitachi AC424 424-bit'],[22,'Hitachi AC344'],[21,'Hitachi AC296'],[20,'Hitachi AC264'],[18,'Hitachi STD 224-bit'],[19,'Hitachi AC1']],
 
   // ── Toshiba (also covers Carrier 42NQV series) ───────────
-  // kVariantRx[]: Toshiba=28
-  'TOSHIBA_AC': [[28,'Toshiba 72-bit+']],
+  // TX #define: TOSHIBA=24
+  'TOSHIBA_AC': [[24,'Toshiba 72-bit+']],
 
   // ── Haier / Daichi / Mabe ────────────────────────────────
-  // kVariantRx[]: Haier STD=29, YRW02=30, AC160=31, AC176=32
-  'HAIER_AC':       [[29,'Haier STD 72-bit'],[30,'Haier YRW02 112-bit'],[31,'Haier AC160'],[32,'Haier AC176']],
-  'HAIER_AC_YRW02': [[30,'Haier YRW02 112-bit'],[29,'Haier STD 72-bit'],[31,'Haier AC160'],[32,'Haier AC176']],
-  'HAIER_AC160':    [[31,'Haier AC160 160-bit'],[30,'Haier YRW02 112-bit'],[29,'Haier STD 72-bit'],[32,'Haier AC176']],
-  'HAIER_AC176':    [[32,'Haier AC176 176-bit'],[31,'Haier AC160 160-bit'],[30,'Haier YRW02 112-bit'],[29,'Haier STD 72-bit']],
+  // TX #defines: Haier STD=25, YRW02=26, AC160=27, AC176=28
+  'HAIER_AC':       [[25,'Haier STD 72-bit'],[26,'Haier YRW02 112-bit'],[27,'Haier AC160'],[28,'Haier AC176']],
+  'HAIER_AC_YRW02': [[26,'Haier YRW02 112-bit'],[25,'Haier STD 72-bit'],[27,'Haier AC160'],[28,'Haier AC176']],
+  'HAIER_AC160':    [[27,'Haier AC160 160-bit'],[26,'Haier YRW02 112-bit'],[25,'Haier STD 72-bit'],[28,'Haier AC176']],
+  'HAIER_AC176':    [[28,'Haier AC176 176-bit'],[27,'Haier AC160 160-bit'],[26,'Haier YRW02 112-bit'],[25,'Haier STD 72-bit']],
 
   // ── Kelvinator / Gree (Kelvinator FIRST — ordering rule) ─
-  // kVariantRx[]: Kelvinator=33, Gree=34
-  'KELVINATOR': [[33,'Kelvinator 128-bit'],[34,'Gree 64-bit']],
-  'GREE':       [[33,'Kelvinator 128-bit'],[34,'Gree 64-bit']],
+  // TX #defines: Kelvinator=29, Gree=30
+  'KELVINATOR': [[29,'Kelvinator 128-bit'],[30,'Gree 64-bit']],
+  'GREE':       [[29,'Kelvinator 128-bit'],[30,'Gree 64-bit']],
 
   // ── Midea / Coolix (cross-check) ─────────────────────────
-  // kVariantRx[]: Midea=35, Midea24=36, Coolix=37, Coolix48=38
-  'MIDEA':    [[35,'Midea 48-bit'],[36,'Midea24 24-bit'],[37,'Coolix 24-bit'],[38,'Coolix48 48-bit']],
-  'MIDEA24':  [[36,'Midea24 24-bit'],[35,'Midea 48-bit']],
-  // Bosch FIRST for Coolix — per IRrecv.cpp ordering rule; kVariantRx[]: Bosch=72
-  'COOLIX':   [[72,'Bosch144 144-bit'],[37,'Coolix 24-bit'],[38,'Coolix48 48-bit'],[35,'Midea 48-bit']],
-  'COOLIX48': [[72,'Bosch144 144-bit'],[38,'Coolix48 48-bit'],[37,'Coolix 24-bit'],[35,'Midea 48-bit']],
+  // TX #defines: Midea=31, Midea24=32, Coolix=33, Coolix48=34
+  'MIDEA':    [[31,'Midea 48-bit'],[32,'Midea24 24-bit'],[33,'Coolix 24-bit'],[34,'Coolix48 48-bit']],
+  'MIDEA24':  [[32,'Midea24 24-bit'],[31,'Midea 48-bit']],
+  // Bosch FIRST for Coolix — per IRrecv.cpp ordering rule; TX #define: Bosch=63
+  'COOLIX':   [[63,'Bosch144 144-bit'],[33,'Coolix 24-bit'],[34,'Coolix48 48-bit'],[31,'Midea 48-bit']],
+  'COOLIX48': [[63,'Bosch144 144-bit'],[34,'Coolix48 48-bit'],[33,'Coolix 24-bit'],[31,'Midea 48-bit']],
 
   // ── Carrier 64-bit ───────────────────────────────────────
-  // kVariantRx[]: Carrier32/40/84/128 RAW=39/40/42/43 (omitted), Carrier64=41
-  'CARRIER_AC64': [[41,'Carrier64 64-bit']],
+  // TX #define: Carrier64=35
+  'CARRIER_AC64': [[35,'Carrier64 64-bit']],
 
   // ── Sharp (Kelvinator cross-check) ───────────────────────
-  // kVariantRx[]: Sharp=44, Kelvinator=33
-  'SHARP_AC': [[44,'Sharp 104-bit'],[33,'Kelvinator 128-bit']],
+  // TX #defines: Sharp=36, Kelvinator=29
+  'SHARP_AC': [[36,'Sharp 104-bit'],[29,'Kelvinator 128-bit']],
 
   // ── Whirlpool ────────────────────────────────────────────
-  // kVariantRx[]: Whirlpool=45
-  'WHIRLPOOL_AC': [[45,'Whirlpool 168-bit (toggle)']],
+  // TX #define: Whirlpool=37
+  'WHIRLPOOL_AC': [[37,'Whirlpool 168-bit (toggle)']],
 
   // ── Electra / AUX ────────────────────────────────────────
-  // kVariantRx[]: Electra=46
-  'ELECTRA_AC': [[46,'Electra / AUX 104-bit']],
+  // TX #define: Electra=38
+  'ELECTRA_AC': [[38,'Electra / AUX 104-bit']],
 
   // ── Vestel ───────────────────────────────────────────────
-  // kVariantRx[]: Vestel=47
-  'VESTEL_AC': [[47,'Vestel 56-bit']],
+  // TX #define: Vestel=39
+  'VESTEL_AC': [[39,'Vestel 56-bit']],
 
   // ── Teco / Alaska ────────────────────────────────────────
-  // kVariantRx[]: Teco=50
-  'TECO': [[50,'Teco 35-bit']],
+  // TX #define: Teco=42
+  'TECO': [[42,'Teco 35-bit']],
 
   // ── Goodweather ──────────────────────────────────────────
-  // kVariantRx[]: Goodweather=51
-  'GOODWEATHER': [[51,'Goodweather 48-bit']],
+  // TX #define: Goodweather=43
+  'GOODWEATHER': [[43,'Goodweather 48-bit']],
 
   // ── Neoclima / Soleus Air ────────────────────────────────
-  // kVariantRx[]: Neoclima=52
-  'NEOCLIMA': [[52,'Neoclima 96-bit']],
+  // TX #define: Neoclima=44
+  'NEOCLIMA': [[44,'Neoclima 96-bit']],
 
   // ── Amcor ────────────────────────────────────────────────
-  // kVariantRx[]: Amcor=53
-  'AMCOR': [[53,'Amcor 64-bit']],
+  // TX #define: Amcor=45
+  'AMCOR': [[45,'Amcor 64-bit']],
 
   // ── Airwell ──────────────────────────────────────────────
-  // kVariantRx[]: Airwell=54
-  'AIRWELL': [[54,'Airwell 34-bit (toggle)']],
+  // TX #define: Airwell=46
+  'AIRWELL': [[46,'Airwell 34-bit (toggle)']],
 
   // ── De'Longhi ────────────────────────────────────────────
-  // kVariantRx[]: Delonghi=55, Electra=46
-  'DELONGHI_AC': [[55,"De'Longhi 64-bit"],[46,'Electra / AUX 104-bit']],
+  // TX #defines: Delonghi=47, Electra=38
+  'DELONGHI_AC': [[47,"De'Longhi 64-bit"],[38,'Electra / AUX 104-bit']],
 
   // ── Sanyo ────────────────────────────────────────────────
-  // kVariantRx[]: Sanyo STD=56, Sanyo88=57, Sanyo152 RAW=58 (omitted)
-  'SANYO_AC':   [[56,'Sanyo STD 72-bit'],[57,'Sanyo88 88-bit']],
-  'SANYO_AC88': [[57,'Sanyo88 88-bit'],[56,'Sanyo STD 72-bit']],
-  // SANYO_AC152 — no TX class; best-effort fallback
-  'SANYO_AC152':[[56,'Sanyo STD 72-bit (best-effort)'],[57,'Sanyo88 88-bit (best-effort)']],
+  // TX #defines: Sanyo STD=48, Sanyo88=49. Sanyo152 has no TX class.
+  'SANYO_AC':   [[48,'Sanyo STD 72-bit'],[49,'Sanyo88 88-bit']],
+  'SANYO_AC88': [[49,'Sanyo88 88-bit'],[48,'Sanyo STD 72-bit']],
+  'SANYO_AC152':[[48,'Sanyo STD 72-bit (best-effort)'],[49,'Sanyo88 88-bit (best-effort)']],
 
   // ── Voltas ───────────────────────────────────────────────
-  // kVariantRx[]: Voltas=59
-  'VOLTAS': [[59,'Voltas 120-bit']],
+  // TX #define: Voltas=50
+  'VOLTAS': [[50,'Voltas 120-bit']],
 
   // ── Mirage ───────────────────────────────────────────────
-  // kVariantRx[]: Mirage=60
-  'MIRAGE': [[60,'Mirage 120-bit']],
+  // TX #define: Mirage=51
+  'MIRAGE': [[51,'Mirage 120-bit']],
 
   // ── Corona ───────────────────────────────────────────────
-  // kVariantRx[]: Corona=61
-  'CORONA_AC': [[61,'Corona 168-bit']],
+  // TX #define: Corona=52
+  'CORONA_AC': [[52,'Corona 168-bit']],
 
   // ── Airton ───────────────────────────────────────────────
-  // kVariantRx[]: Airton=62
-  'AIRTON': [[62,'Airton 56-bit']],
+  // TX #define: Airton=53
+  'AIRTON': [[53,'Airton 56-bit']],
 
   // ── EcoClim ──────────────────────────────────────────────
-  // kVariantRx[]: EcoClim=63
-  'ECOCLIM': [[63,'EcoClim 56-bit']],
+  // TX #define: EcoClim=54
+  'ECOCLIM': [[54,'EcoClim 56-bit']],
 
   // ── Kelon / Hisense ──────────────────────────────────────
-  // kVariantRx[]: Kelon=64, Kelon168=65
-  'KELON':    [[64,'Kelon 48-bit'],[65,'Kelon168 168-bit']],
-  'KELON168': [[65,'Kelon168 168-bit'],[64,'Kelon 48-bit']],
+  // TX #defines: Kelon=55, Kelon168=56
+  'KELON':    [[55,'Kelon 48-bit'],[56,'Kelon168 168-bit']],
+  'KELON168': [[56,'Kelon168 168-bit'],[55,'Kelon 48-bit']],
 
   // ── Rhoss ────────────────────────────────────────────────
-  // kVariantRx[]: Rhoss=66
-  'RHOSS': [[66,'Rhoss 96-bit']],
+  // TX #define: Rhoss=57
+  'RHOSS': [[57,'Rhoss 96-bit']],
 
   // ── Technibel ────────────────────────────────────────────
-  // kVariantRx[]: Technibel=67
-  'TECHNIBEL_AC': [[67,'Technibel 56-bit']],
+  // TX #define: Technibel=58
+  'TECHNIBEL_AC': [[58,'Technibel 56-bit']],
 
   // ── Transcold ────────────────────────────────────────────
-  // kVariantRx[]: Transcold=68
-  'TRANSCOLD': [[68,'Transcold 136-bit']],
+  // TX #define: Transcold=59
+  'TRANSCOLD': [[59,'Transcold 136-bit']],
 
   // ── Trotec / Duux (split brand — Midea fallback) ─────────
-  // kVariantRx[]: Trotec STD=69, Trotec3550=70, Midea=35
-  'TROTEC':      [[69,'Trotec STD 56-bit'],[70,'Trotec3550 120-bit'],[35,'Midea 48-bit']],
-  'TROTEC_3550': [[70,'Trotec3550 120-bit'],[69,'Trotec STD 56-bit'],[35,'Midea 48-bit']],
+  // TX #defines: Trotec STD=60, Trotec3550=61, Midea=31
+  'TROTEC':      [[60,'Trotec STD 56-bit'],[61,'Trotec3550 120-bit'],[31,'Midea 48-bit']],
+  'TROTEC_3550': [[61,'Trotec3550 120-bit'],[60,'Trotec STD 56-bit'],[31,'Midea 48-bit']],
 
   // ── Truma ────────────────────────────────────────────────
-  // kVariantRx[]: Truma=71
-  'TRUMA': [[71,'Truma (variable)']],
+  // TX #define: Truma=62
+  'TRUMA': [[62,'Truma (variable)']],
 
   // ── Bosch / Durastar ─────────────────────────────────────
-  // kVariantRx[]: Bosch144=72
-  'BOSCH144': [[72,'Bosch144 144-bit']],
+  // TX #define: Bosch144=63
+  'BOSCH144': [[63,'Bosch144 144-bit']],
 
   // ── Argo ─────────────────────────────────────────────────
-  // kVariantRx[]: Argo WREM2=73, Argo WREM3=74
-  'ARGO':      [[73,'Argo WREM2 96-bit'],[74,'Argo WREM3 (variable)']],
-  'ARGO_WREM3':[[74,'Argo WREM3 (variable)'],[73,'Argo WREM2 96-bit']],
+  // TX #defines: Argo WREM2=64, Argo WREM3=65
+  'ARGO':      [[64,'Argo WREM2 96-bit'],[65,'Argo WREM3 (variable)']],
+  'ARGO_WREM3':[[65,'Argo WREM3 (variable)'],[64,'Argo WREM2 96-bit']],
 
   // ── Eurom ────────────────────────────────────────────────
-  // kVariantRx[]: Eurom=75
-  'EUROM': [[75,'Eurom 96-bit']],
+  // TX #define: Eurom=66
+  'EUROM': [[66,'Eurom 96-bit']],
 
   // ── York ─────────────────────────────────────────────────
-  // kVariantRx[]: York=76
-  'YORK': [[76,'York 88-bit']],
+  // TX #define: York=67
+  'YORK': [[67,'York 88-bit']],
 
   // ── BlueStar Heavy — decoder only, no TX class ───────────
   'BLUESTARHEAVY': [],  // no candidates → notice shown, use All Protocols
