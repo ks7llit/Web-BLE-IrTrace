@@ -72,6 +72,7 @@ enum LearnSlotState : uint8_t {
 static LearnSlotState gSlotState[LEARN_NUM_SLOTS];
 static uint8_t        gActiveLearnSlot   = 0xFF;   // slot currently in the learn workflow
 static LearnSlotState gPreCaptureState   = SLOT_EMPTY; // state before capture started (for discard)
+static bool           gLearnCaptureArmed = false;  // true only while waiting for first IR frame
 
 // ── Capture buffer (RAM only — not yet saved) ─────────────────
 // Stores mark/space durations in µs (rawbuf × kRawTick=2, index 0 skipped).
@@ -96,7 +97,7 @@ void learnSendAllStatus();
 // Bytes 6+:  rawbuf as uint16_t array (little-endian, values in µs)
 //
 // Max blob: 6 + 1023×2 = 2052 bytes per slot.
-// 16 slots max total: ~32 KB << 64 KB irlearn partition.
+// 16 slots max total: ~32 KB << 48 KB irlearn partition.
 
 static bool learnEncodeBlob(uint8_t slotId,
                              const uint16_t* buf, uint16_t rawlen,
@@ -129,12 +130,36 @@ static bool learnDecodeBlob(const uint8_t* in, size_t inLen,
 
 // ── Public API ────────────────────────────────────────────────
 
-// Call once in setup() — scan irlearn NVS and mark which slots are saved.
+static bool learnValidateSavedBlob(uint8_t slot) {
+  if (slot >= LEARN_NUM_SLOTS) return false;
+
+  static uint8_t blob[6u + LEARN_MAX_RAWLEN * 2u];
+  const size_t n = learnNvsLoadBlob(kLearnNvsKeys[slot], blob, sizeof(blob));
+  if (n < 6 || blob[1] != slot) return false;
+
+  uint16_t rawlen = 0;
+  uint8_t carrier = LEARN_CARRIER_KHZ;
+  return learnDecodeBlob(blob, n, gLearnReplayBuf, &rawlen, &carrier);
+}
+
+// Call once in setup() — scan irlearn NVS and mark only valid slots as saved.
 static void learnInit() {
   for (uint8_t i = 0; i < LEARN_NUM_SLOTS; i++) {
-    gSlotState[i] = learnNvsKeyExists(kLearnNvsKeys[i]) ? SLOT_SAVED : SLOT_EMPTY;
+    if (learnNvsKeyExists(kLearnNvsKeys[i]) && learnValidateSavedBlob(i)) {
+      gSlotState[i] = SLOT_SAVED;
+    } else {
+      gSlotState[i] = SLOT_EMPTY;
+    }
   }
+  gLearnReplayLen = 0;
   Serial.println(F("[LEARN] Slot states loaded from NVS"));
+}
+
+static bool learnAllSlotsSaved() {
+  for (uint8_t i = 0; i < LEARN_NUM_SLOTS; i++) {
+    if (gSlotState[i] != SLOT_SAVED) return false;
+  }
+  return true;
 }
 
 // Return the slot index for a given TX job (power string + temp).
@@ -153,6 +178,7 @@ static void learnBeginCapture(uint8_t slot) {
   gActiveLearnSlot = slot;
   gPreCaptureState = gSlotState[slot];
   gLearnRamLen     = 0;
+  gLearnCaptureArmed = true;
   Serial.printf("[LEARN] Begin capture → slot %d (%s)\n", slot, kLearnSlotNames[slot]);
 }
 
@@ -161,6 +187,7 @@ static void learnBeginCapture(uint8_t slot) {
 // rawbuf[0] is the leading gap — skip it.
 static bool learnStoreCapture(const decode_results* r) {
   if (gActiveLearnSlot >= LEARN_NUM_SLOTS) return false;
+  if (!gLearnCaptureArmed) return false;
   if (r->rawlen < 2) return false;  // nothing useful beyond the leading gap
 
   const uint16_t copyLen = (r->rawlen - 1u < LEARN_MAX_RAWLEN)
@@ -174,6 +201,7 @@ static bool learnStoreCapture(const decode_results* r) {
     gLearnRamBuf[i] = (us > 65535u) ? 65535u : (uint16_t)us;
   }
   gLearnRamLen = copyLen;
+  gLearnCaptureArmed = false;
 
   gSlotState[gActiveLearnSlot] = SLOT_CAPTURED;
   Serial.printf("[LEARN] Captured %d marks/spaces for slot %d (%s)\n",
@@ -213,6 +241,7 @@ static bool learnSaveSlot() {
   }
   gSlotState[gActiveLearnSlot] = SLOT_SAVED;
   gPreCaptureState             = SLOT_SAVED;  // update so discard no longer reverts
+  gLearnCaptureArmed           = false;
   Serial.printf("[LEARN] Saved slot %d (%s)  %u µs-pairs\n",
                 gActiveLearnSlot, kLearnSlotNames[gActiveLearnSlot], gLearnRamLen);
   return true;
@@ -225,20 +254,43 @@ static void learnDiscardCapture() {
   gSlotState[gActiveLearnSlot] = gPreCaptureState;
   gLearnRamLen     = 0;
   gActiveLearnSlot = 0xFF;
+  gLearnCaptureArmed = false;
   Serial.println(F("[LEARN] Capture discarded"));
 }
 
 // Delete a saved slot from NVS and reset its state to EMPTY.
 static bool learnDeleteSlot(uint8_t slot) {
   if (slot >= LEARN_NUM_SLOTS) return false;
-  learnNvsEraseKey(kLearnNvsKeys[slot]);
+  const bool existed = learnNvsKeyExists(kLearnNvsKeys[slot]);
+  if (existed && !learnNvsEraseKey(kLearnNvsKeys[slot])) return false;
   gSlotState[slot] = SLOT_EMPTY;
   if (gActiveLearnSlot == slot) {
     gActiveLearnSlot = 0xFF;
     gLearnRamLen     = 0;
+    gLearnCaptureArmed = false;
   }
   Serial.printf("[LEARN] Deleted slot %d (%s)\n", slot, kLearnSlotNames[slot]);
   return true;
+}
+
+// Delete every saved learned slot and reset any in-progress capture/replay RAM.
+static bool learnDeleteAllSlots() {
+  bool ok = true;
+  for (uint8_t i = 0; i < LEARN_NUM_SLOTS; i++) {
+    const bool existed = learnNvsKeyExists(kLearnNvsKeys[i]);
+    if (existed && !learnNvsEraseKey(kLearnNvsKeys[i])) {
+      ok = false;
+    } else {
+      gSlotState[i] = SLOT_EMPTY;
+    }
+  }
+  gActiveLearnSlot = 0xFF;
+  gPreCaptureState = SLOT_EMPTY;
+  gLearnRamLen     = 0;
+  gLearnReplayLen  = 0;
+  gLearnCaptureArmed = false;
+  Serial.println(F("[LEARN] Deleted all learned slots"));
+  return ok;
 }
 
 // Load a saved slot into gLearnReplayBuf for playback from executeTx().
@@ -252,6 +304,7 @@ static bool learnPrepareReplay(uint8_t slot) {
   static uint8_t blob[6u + LEARN_MAX_RAWLEN * 2u];
   const size_t n = learnNvsLoadBlob(kLearnNvsKeys[slot], blob, sizeof(blob));
   if (n < 6) return false;
+  if (blob[1] != slot) return false;
 
   uint16_t rawlen = 0;
   uint8_t  carrier = LEARN_CARRIER_KHZ;

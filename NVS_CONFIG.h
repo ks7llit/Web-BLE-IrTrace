@@ -14,6 +14,7 @@
 #define CFG_NAMESPACE        "irtrace_ble"
 #define CFG_DEFAULT_UID      "999"
 #define CFG_DEFAULT_WAKE_SEC 60u
+#define CFG_DEFAULT_CTRL_MODE 0u
 #define CFG_ADMIN_PASS       "1234admin"
 
 // Separate partition for learned IR data — avoids filling shared NVS
@@ -25,6 +26,7 @@ extern String      gStoredUid;
 extern uint32_t    gStoredWakeSec;
 extern String      gStoredWifiSsid;
 extern String      gStoredWifiPass;
+extern uint8_t     gStoredCtrlMode;
 
 // ── Helpers ──────────────────────────────────────────────────
 static String nvsConfigPadUid(const String& raw) {
@@ -51,10 +53,12 @@ static void loadStoredConfig(uint8_t* storedVariantOut) {
   gStoredWifiSsid = gPrefs.getString("ssid", "");
   gStoredWifiPass = gPrefs.getString("pass", "");
   if (storedVariantOut) *storedVariantOut = gPrefs.getUChar("variant", 1);
+  gStoredCtrlMode = gPrefs.getUChar("ctrl", CFG_DEFAULT_CTRL_MODE);
   gStoredUid     = nvsConfigPadUid(gPrefs.getString("uid", CFG_DEFAULT_UID));
   gStoredWakeSec = gPrefs.getUInt("wake_sec", CFG_DEFAULT_WAKE_SEC);
   gPrefs.end();
 
+  if (gStoredCtrlMode > 1u) gStoredCtrlMode = CFG_DEFAULT_CTRL_MODE;
   if (gStoredWakeSec < 60u)    gStoredWakeSec = 60u;
   if (gStoredWakeSec > 36000u) gStoredWakeSec = 36000u;
 }
@@ -66,7 +70,11 @@ static bool saveWifiConfig(const String& ssid, const String& pass) {
   }
   gPrefs.putString("ssid", ssid);
   gPrefs.putString("pass", pass);
+  const bool ok = (gPrefs.getString("ssid", "") == ssid) &&
+                  gPrefs.isKey("pass") &&
+                  (gPrefs.getString("pass", "") == pass);
   gPrefs.end();
+  if (!ok) return false;
   gStoredWifiSsid = ssid;
   gStoredWifiPass = pass;
   return true;
@@ -78,7 +86,22 @@ static bool saveVariantConfig(uint8_t variant) {
     return false;
   }
   gPrefs.putUChar("variant", variant);
+  const bool ok = (gPrefs.getUChar("variant", 0xFF) == variant);
   gPrefs.end();
+  return ok;
+}
+
+static bool saveCtrlModeConfig(uint8_t mode) {
+  if (mode > 1u) mode = CFG_DEFAULT_CTRL_MODE;
+  if (!gPrefs.begin(CFG_NAMESPACE, false)) {
+    Serial.println(F("[CFG] NVS open failed for control mode save"));
+    return false;
+  }
+  gPrefs.putUChar("ctrl", mode);
+  const bool ok = (gPrefs.getUChar("ctrl", 0xFF) == mode);
+  gPrefs.end();
+  if (!ok) return false;
+  gStoredCtrlMode = mode;
   return true;
 }
 
@@ -93,7 +116,10 @@ static bool saveAdminConfig(const String& uid, uint32_t wakeSec) {
   }
   gPrefs.putString("uid", paddedUid);
   gPrefs.putUInt("wake_sec", wakeSec);
+  const bool ok = (gPrefs.getString("uid", "") == paddedUid) &&
+                  (gPrefs.getUInt("wake_sec", 0) == wakeSec);
   gPrefs.end();
+  if (!ok) return false;
 
   gStoredUid     = paddedUid;
   gStoredWakeSec = wakeSec;

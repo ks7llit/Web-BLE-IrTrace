@@ -141,7 +141,7 @@ IRsendRMT irsend(kIrLed);
 #define AC_ECOCLIM         54   // IREcoclimAc            56-bit
 
 // ── Kelon ────────────────────────────────────────────────────
-#define AC_KELON           55   // IRKelonAc              48-bit  (uses ensurePower)
+#define AC_KELON           55   // IRKelonAc              48-bit
 #define AC_KELON168        56   // IRKelon168Ac          168-bit
 
 // ── Rhoss ────────────────────────────────────────────────────
@@ -700,11 +700,14 @@ void Handle_AC(uint8_t t, const String& power) {
         //    clamped to 62°F = 17°C — making ON 24°C and ON 28°C produce
         //    identical frames.
         //
-        // Fix: call setMode() first, then setTemp(t, false) with explicit
-        //      Celsius flag to override the Fahrenheit default left by setMode().
-        if      (power == "ON")  { ac.setPower(true);    ac.setMode(kMideaACCool); ac.setTemp(t, false); }
+        // Fix: call setMode() first, then setTemp(t, true) with useCelsius=true.
+        //      stateReset() sets _.useFahrenheit=1. setTemp(t, false) treats t
+        //      as Fahrenheit → 24°F < kMideaACMinTempF(62°F) → clamped to 62°F
+        //      → 17°C for every requested temperature. Passing true tells the
+        //      API t is Celsius, clamps against [17–30°C], and converts correctly.
+        if      (power == "ON")  { ac.setPower(true);    ac.setMode(kMideaACCool); ac.setTemp(t, true); }
         else if (power == "OFF") { ac.setPower(false); }
-        else                     { ac.setPower(acPower); ac.setMode(kMideaACCool); ac.setTemp(t, false); }
+        else                     { ac.setPower(acPower); ac.setMode(kMideaACCool); ac.setTemp(t, true); }
         irsend.sendMidea(ac.getRaw(), kMideaBits, kMideaMinRepeat);
         delay(acSendDelay);
         break;
@@ -718,9 +721,10 @@ void Handle_AC(uint8_t t, const String& power) {
         IRMideaAC ac(kIrLed);
         // BUG FIX (Bug #18): same setter-order + Fahrenheit-flag issue as V31.
         // See V31 (AC_MIDEA) comment above for full root-cause analysis.
-        if      (power == "ON")  { ac.setPower(true);    ac.setMode(kMideaACCool); ac.setTemp(t, false); }
+        // Same correction: setTemp(t, true) — useCelsius=true.
+        if      (power == "ON")  { ac.setPower(true);    ac.setMode(kMideaACCool); ac.setTemp(t, true); }
         else if (power == "OFF") { ac.setPower(false); }
-        else                     { ac.setPower(acPower); ac.setMode(kMideaACCool); ac.setTemp(t, false); }
+        else                     { ac.setPower(acPower); ac.setMode(kMideaACCool); ac.setTemp(t, true); }
         irsend.sendMidea(ac.getRaw(), kMideaBits, kMideaMinRepeat);
         delay(acSendDelay);
         break;
@@ -1011,6 +1015,14 @@ void Handle_AC(uint8_t t, const String& power) {
         else if (power == "OFF") { ac.setPower(false); }
         else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kCoronaAcModeCool); }
         irsend.sendCoronaAc(ac.getRaw(), kCoronaAcStateLength, kNoRepeat);
+        // BUG FIX (Bug #19): kCoronaAcSpaceGap = 10,800µs < kRmtGapThresholdUs (36,000µs).
+        // sendCoronaAc() calls sendGeneric 3× (kCoronaAcSections = 3), each ending with
+        // kCoronaAcSpaceGap — no section gap reaches threshold → full 3-section frame never
+        // auto-flushes. Identical stale-buffer bug to V13 Fujitsu, V15 Panasonic AC32.
+        // kCoronaAcBitMark=450 and kCoronaAcSpaceGap=10800 defined in ir_Corona.cpp only
+        // (not exported in header) → hardcoded here.
+        irsend.mark(450);    // kCoronaAcBitMark = 450µs — closes trailing gap in receiver rawData
+        irsend.space(36001); // >= kRmtGapThresholdUs (36,000µs) — flushes 3-section frame to RMT HW
         delay(acSendDelay);
         break;
       }
@@ -1018,9 +1030,16 @@ void Handle_AC(uint8_t t, const String& power) {
     // ── 53: Airton 56-bit ────────────────────────────────────
     case AC_AIRTON: {
         IRAirtonAc ac(kIrLed);
-        if      (power == "ON")  { ac.setPower(true);    ac.setTemp(t); ac.setMode(kAirtonCool); }
+        // BUG FIX (Bug #20): stateReset() initialises Mode=kAirtonAuto.
+        // setPower(true) internally calls setMode(getMode())=setMode(kAirtonAuto) which calls
+        // setTemp(25); but setTemp's Auto guard forces temp=kAirtonMaxTemp=31C.
+        // Then setTemp(t) runs while Mode is still Auto → guard forces 31C regardless of t.
+        // Then setMode(kAirtonCool) changes mode too late — Temp field already wrong.
+        // Fix: setMode(kAirtonCool) before setTemp(t) — same pattern as Bug #10/14/15.
+        // Note: kDefaultMessageGap (100,000µs) ends each send → auto-flush ✓ no mark+space needed.
+        if      (power == "ON")  { ac.setPower(true);    ac.setMode(kAirtonCool); ac.setTemp(t); }
         else if (power == "OFF") { ac.setPower(false); }
-        else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kAirtonCool); }
+        else                     { ac.setPower(acPower); ac.setMode(kAirtonCool); ac.setTemp(t); }
         irsend.sendAirton(ac.getRaw(), kAirtonBits, kAirtonDefaultRepeat);
         delay(acSendDelay);
         break;
@@ -1037,12 +1056,22 @@ void Handle_AC(uint8_t t, const String& power) {
         break;
       }
 
-    // ── 55: Kelon 48-bit (uses ensurePower) ──────────────────
+    // ── 55: Kelon 48-bit ──────────────────────────────────────
     case AC_KELON: {
         IRKelonAc ac(kIrLed);
-        if      (power == "ON")  { ac.ensurePower(true);    ac.setTemp(t); ac.setMode(kKelonModeCool); }
-        else if (power == "OFF") { ac.ensurePower(false); }
-        else                     { ac.ensurePower(acPower); ac.setTemp(t); ac.setMode(kKelonModeCool); }
+        // BUG FIX (Bug #21): ensurePower() calls ac.send() internally via ac._irsend (standard
+        // IRsend). These internal sends do NOT transmit via IRsendRMT — only the external
+        // irsend.sendKelon() call actually transmits.
+        // For OFF: ensurePower(false) does 3 internal sends. The 3rd sets PowerToggle=true then
+        // immediately resets it to false (send() always clears toggle flags after transmitting).
+        // Leftover state = stateReset defaults (Mode=Heat=0, Temp=18°C, PowerToggle=false) →
+        // RX decodes as KELON 0x683, Temp:18C, Mode:Heat regardless of last-used temperature.
+        // Fix: bypass ensurePower() entirely. For OFF, call setTogglePower(true) directly so the
+        // external irsend.sendKelon() transmits the toggle bit. For ON, plain setMode+setTemp.
+        // Note: kKelonGap = 2×kDefaultMessageGap = 200,000µs > threshold → auto-flushes ✓
+        if      (power == "ON")  { ac.setMode(kKelonModeCool); ac.setTemp(t); }
+        else if (power == "OFF") { ac.setMode(kKelonModeCool); ac.setTemp(t); ac.setTogglePower(true); }
+        else                     { ac.setMode(kKelonModeCool); ac.setTemp(t); }
         irsend.sendKelon(ac.getRaw(), kKelonBits, kNoRepeat);
         delay(acSendDelay);
         break;
@@ -1152,32 +1181,52 @@ void Handle_AC(uint8_t t, const String& power) {
 
     // ── 63: Bosch 144-bit ────────────────────────────────────
     case AC_BOSCH144: {
-        IRBosch144AC ac(kIrLed);
-        if      (power == "ON")  { ac.setPower(true);    ac.setTemp(t); ac.setMode(kBosch144Cool); }
-        else if (power == "OFF") { ac.setPower(false); }
-        else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kBosch144Cool); }
-        irsend.sendBosch144(ac.getRaw(), kBosch144StateLength, kNoRepeat);
+        // BUG FIX (Bug #22): Bosch144 OFF uses a completely separate hardcoded 96-bit payload
+        // (kBosch144Off[12]) — NOT a flag within _.raw. setPower(false) only sets powerFlag;
+        // getRaw() ALWAYS returns _.raw regardless. The payload switch (if !powerFlag → send
+        // kBosch144Off) lives only in ac.send() which calls ac._irsend internally. Since
+        // ac._irsend doesn't transmit via IRsendRMT, irsend.sendBosch144(ac.getRaw(),
+        // kBosch144StateLength) for OFF transmitted the stateReset defaults (Mode=Auto,
+        // Temp=25°C), decoded by RX as "Power:On, Mode:Auto, Temp:25C" — no power-off sent.
+        // Fix: pass kBosch144Off directly for OFF. sizeof(kBosch144Off)=12 bytes (2 sections),
+        // vs kBosch144StateLength=18 bytes (3 sections) for ON. Both are valid multiples of
+        // kBosch144BytesPerSection(6), so sendBosch144() length-check passes ✓
+        bool wantOff = (power == "OFF") || (power != "ON" && !acPower);
+        if (wantOff) {
+            irsend.sendBosch144(kBosch144Off, sizeof(kBosch144Off), kNoRepeat);
+        } else {
+            IRBosch144AC ac(kIrLed);
+            ac.setTemp(t); ac.setMode(kBosch144Cool);
+            irsend.sendBosch144(ac.getRaw(), kBosch144StateLength, kNoRepeat);
+        }
         delay(acSendDelay);
         break;
       }
 
     // ── 64: Argo WREM-2 96-bit ───────────────────────────────
+    // BUG FIX (Bug #23): sendArgo() defaults sendFooter=false → trailing gap=0µs
+    // → RMT buffer never auto-flushes (threshold=36,000µs) → stale-buffer bug.
+    // Fix: pass sendFooter=true as 4th arg → uses kArgoGap=kDefaultMessageGap
+    // (100,000µs) as trailer → above threshold → frame flushes immediately.
     case AC_ARGO_WREM2: {
         IRArgoAC ac(kIrLed);
         if      (power == "ON")  { ac.setPower(true);    ac.setTemp(t); ac.setMode(kArgoCool); }
-        else if (power == "OFF") { ac.setPower(false); }
+        else if (power == "OFF") { ac.setPower(false);   ac.setTemp(t); ac.setMode(kArgoCool); }
         else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(kArgoCool); }
-        irsend.sendArgo(ac.getRaw(), kArgoStateLength, kArgoDefaultRepeat);
+        irsend.sendArgo(ac.getRaw(), kArgoStateLength, kArgoDefaultRepeat, true);
         delay(acSendDelay);
         break;
       }
 
     // ── 65: Argo WREM-3 (variable-bit) ───────────────────────
+    // BUG FIX (Bug #24): static_cast<argoMode_t>(kArgoCool) casts value 0, but
+    // argoMode_t enum has no member 0 (COOL=1, AUTO=5) → setMode() hits default
+    // case → _.Mode = AUTO (5). Fix: use argoMode_t::COOL directly.
     case AC_ARGO_WREM3: {
         IRArgoAC_WREM3 ac(kIrLed);
-        if      (power == "ON")  { ac.setPower(true);    ac.setTemp(t); ac.setMode(static_cast<argoMode_t>(kArgoCool)); }
-        else if (power == "OFF") { ac.setPower(false); }
-        else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(static_cast<argoMode_t>(kArgoCool)); }
+        if      (power == "ON")  { ac.setPower(true);    ac.setTemp(t); ac.setMode(argoMode_t::COOL); }
+        else if (power == "OFF") { ac.setPower(false);   ac.setTemp(t); ac.setMode(argoMode_t::COOL); }
+        else                     { ac.setPower(acPower); ac.setTemp(t); ac.setMode(argoMode_t::COOL); }
         irsend.sendArgoWREM3(ac.getRaw(), ac.getRawByteLength(), kArgoDefaultRepeat);
         delay(acSendDelay);
         break;

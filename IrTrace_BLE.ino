@@ -2,7 +2,7 @@
  * IrTrace — ESP32-C5   IR Receiver + IR Transmitter + BLE UART
  * ============================================================
  * Receiver base : IRrecvDumpV3  (IRremoteESP8266 library example)
- * Transmitter   : IR_TRANSMITTER.h  (67 AC variants)
+ * Transmitter   : IR_TRANSMITTER.h  (69 AC variants)
  * BLE           : NimBLE-Arduino by h2zero  v2.0+
  *
  * Libraries (Arduino Library Manager):
@@ -18,30 +18,33 @@
  *   Status LED   → GPIO10 (active HIGH)
  *
  * ── BLE Commands (Phone → ESP32) ────────────────────────────
- *   v <0-77>    Select AC variant
+ *   v <0-68>    Select AC variant
  *   on <temp>   Power ON at temp°C  (16–30)
  *   off         Power OFF
  *   t <temp>    Set temp, keep current power state
  *   r <1-10>    Set TX repeat count
  *   RAW=ON      Enable raw IR timing output on Serial
  *   RAW=OFF     Disable raw IR timing output
+ *   ver         ESP32 replies with firmware version
  *   status      ESP32 replies with current state
- *   save        Placeholder — NVS save (coming soon)
+ *   save        Save selected protocol variant to NVS
  *   wscan       Trigger live Wi-Fi scan
  *   wget        Request current Wi-Fi list
  *   WIFI_SET:<SSID>\n<PASS>  Receive Wi-Fi credentials
  *   FIND_RX:ON  Start find-receiver mode (fires t 24 every 3 s)
  *   FIND_RX:OFF Stop find-receiver mode
  *   LRN:STATUS                 Request all slot states + control mode
- *   LRN:MODE:PROTOCOL          Switch to protocol control mode (default)
- *   LRN:MODE:LEARNED           Switch to learned-fallback control mode
+ *   LRN:MODE:PROTOCOL          Switch + save protocol control mode (default)
+ *   LRN:MODE:LEARNED           Switch + save learned-fallback control mode
  *   LRN:BEGIN:<slot>           Start capture for slot (0=OFF, 1-15=COOL_16..30)
  *   LRN:REPLAY                 Test-replay the last captured slot from RAM
  *   LRN:SAVE                   Commit captured slot to NVS
  *   LRN:DISCARD                Discard unsaved capture (saved slots untouched)
  *   LRN:DELETE:<slot>          Erase a saved slot from NVS
+ *   LRN:DELETE_ALL             Erase all learned slots from NVS
  *
  * ── BLE Replies (ESP32 → Phone) ─────────────────────────────
+ *   FW:<ver>           Firmware version string
  *   TX:OK              IR sent successfully
  *   NET:X:SSID:RSSI:S  Wi-Fi scan result line
  *   WIFI:OK            Credentials received
@@ -120,6 +123,8 @@
 // ── WIFI ─────────────────────────────────────────────────────
 #include <WiFi.h>
 #include <Preferences.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 
 // ── DBG macros → USB Serial ──────────────────────────────────
 // Must be defined BEFORE including IR_TRANSMITTER.h
@@ -130,6 +135,9 @@
 // Must be defined BEFORE including IR_TRANSMITTER.h
 #define STATUS_LED_PIN  10
 #define STATUS_LED_ON   HIGH
+
+// Keep this in sync with IRTRACE_WEB_VERSION in index.html.
+#define IRTRACE_FW_VERSION "v@0.0.2"
 
 // LED state machine enums — declared here (before any function definitions)
 // so the Arduino preprocessor can resolve the type when it auto-generates
@@ -179,17 +187,44 @@ String                gStoredUid      = CFG_DEFAULT_UID;
 uint32_t              gStoredWakeSec  = CFG_DEFAULT_WAKE_SEC;
 String                gStoredWifiSsid = "";
 String                gStoredWifiPass = "";
+uint8_t               gStoredCtrlMode = CFG_DEFAULT_CTRL_MODE;
 
 // Learn mode pending-replay flags (set by BLE callback, consumed in loop())
 static bool    gLearnReplayPending = false;
 static uint8_t gLearnReplaySlot    = 0xFF;
-static const uint8_t  BLE_NOTIFY_QUEUE_LEN = 24;
-String                gBleNotifyQueue[BLE_NOTIFY_QUEUE_LEN];
-uint8_t               gBleNotifyHead = 0;
-uint8_t               gBleNotifyTail = 0;
+static const uint8_t  BLE_NOTIFY_QUEUE_LEN = 48;
+static const size_t   BLE_NOTIFY_MAX_LEN   = 160;
+struct BleNotifyMsg { char text[BLE_NOTIFY_MAX_LEN]; };
+static QueueHandle_t  gBleNotifyQueue = nullptr;
 unsigned long         gBleNextNotifyMs = 0;
 bool                  gFindRxActive    = false;  // find-receiver mode flag
 unsigned long         gFindRxNextMs    = 0;       // next scheduled find-mode TX
+
+enum DeferredJobType : uint8_t {
+  JOB_WIFI_SAVE,
+  JOB_ADMIN_SAVE,
+  JOB_VARIANT_SAVE,
+  JOB_CTRL_MODE_SAVE,
+  JOB_LEARN_SAVE,
+  JOB_LEARN_DISCARD,
+  JOB_LEARN_DELETE,
+  JOB_LEARN_DELETE_ALL,
+};
+
+struct DeferredJob {
+  DeferredJobType type;
+  char ssid[33];
+  char pass[65];
+  char uid[4];
+  uint32_t wakeSec;
+  uint8_t variant;
+  uint8_t mode;
+  uint8_t slot;
+};
+
+static const uint8_t DEFERRED_JOB_QUEUE_LEN = 8;
+static QueueHandle_t gDeferredJobQueue = nullptr;
+static bool queueDeferredJob(const DeferredJob& job);
 
 // ── LED state machine globals ─────────────────────────────────
 static LedBase       gLedBase     = LED_WIFI_SCAN; // current base state
@@ -223,34 +258,49 @@ void performWifiScan() {
 
   // Async scan — poll so pumpLed() runs throughout (works in setup() too)
   WiFi.scanNetworks(/*async=*/true);
-  while (WiFi.scanComplete() == WIFI_SCAN_RUNNING) pumpLed();
+  const unsigned long scanStartMs = millis();
+  while (WiFi.scanComplete() == WIFI_SCAN_RUNNING &&
+         (long)(millis() - scanStartMs) < 15000L) {
+    pumpLed();
+    delay(1);
+  }
 
   int n = WiFi.scanComplete();
+  if (n == WIFI_SCAN_RUNNING) {
+    Serial.println(F("[WIFI] Scan timeout"));
+    WiFi.scanDelete();
+    n = 0;
+  }
   if (n < 0) n = 0;   // WIFI_SCAN_FAILED → treat as 0 networks
   Serial.printf("[WIFI] Scan done. Found %d networks.\n", n);
 
   if (n <= 0) {
     gWifiCount = 0;
   } else {
-    // Basic bubble sort by RSSI (descending)
-    int indices[n];
-    for (int i = 0; i < n; i++) indices[i] = i;
-
-    for (int i = 0; i < n - 1; i++) {
-      for (int j = 0; j < n - i - 1; j++) {
-        if (WiFi.RSSI(indices[j]) < WiFi.RSSI(indices[j+1])) {
-          int temp = indices[j];
-          indices[j] = indices[j+1];
-          indices[j+1] = temp;
+    gWifiCount = (n > 10) ? 10 : n;
+    int selectedIdx[10];
+    for (uint8_t i = 0; i < 10; i++) selectedIdx[i] = -1;
+    for (int i = 0; i < gWifiCount; i++) {
+      int bestIdx = -1;
+      int32_t bestRssi = INT32_MIN;
+      for (int candidate = 0; candidate < n; candidate++) {
+        bool alreadySelected = false;
+        for (int prev = 0; prev < i; prev++) {
+          if (selectedIdx[prev] == candidate) {
+            alreadySelected = true;
+            break;
+          }
+        }
+        if (!alreadySelected && WiFi.RSSI(candidate) > bestRssi) {
+          bestIdx = candidate;
+          bestRssi = WiFi.RSSI(candidate);
         }
       }
-    }
-
-    gWifiCount = (n > 10) ? 10 : n;
-    for (int i = 0; i < gWifiCount; i++) {
-      gWifiList[i].ssid       = WiFi.SSID(indices[i]);
-      gWifiList[i].rssi       = WiFi.RSSI(indices[i]);
-      gWifiList[i].encryption = WiFi.encryptionType(indices[i]);
+      if (bestIdx < 0) break;
+      selectedIdx[i] = bestIdx;
+      gWifiList[i].ssid       = WiFi.SSID(bestIdx);
+      gWifiList[i].rssi       = WiFi.RSSI(bestIdx);
+      gWifiList[i].encryption = WiFi.encryptionType(bestIdx);
       Serial.printf("  #%d: %s (%ddBm) %s\n", i, gWifiList[i].ssid.c_str(),
                     (int)gWifiList[i].rssi, (gWifiList[i].encryption == WIFI_AUTH_OPEN) ? "Open" : "Secured");
     }
@@ -309,12 +359,13 @@ bool gRawEnabled = false;  // toggled via BLE RAW=ON / RAW=OFF
 //  NEVER call Handle_AC() or delay() inside a BLE callback.
 // ============================================================
 struct TxJob {
-  bool   pending;
-  int    temp;
-  String power;   // "ON" | "OFF" | "" (keep current power state)
+  uint8_t temp;
+  uint8_t power;  // 0=keep current power, 1=ON, 2=OFF
 };
 
-static TxJob   gTxJob    = { false, 24, "" };
+enum : uint8_t { TX_POWER_KEEP = 0, TX_POWER_ON = 1, TX_POWER_OFF = 2 };
+static const uint8_t TX_JOB_QUEUE_LEN = 4;
+static QueueHandle_t gTxJobQueue = nullptr;
 static uint8_t gTxRepeat = 1;   // configurable via  r <1-10>  — 1 is enough: library already sends kMinRepeat+1 frames internally
 static int     gTxTemp   = 24;  // last confirmed TX temperature
 
@@ -387,8 +438,11 @@ static void loadStoredConfig() {
   ::loadStoredConfig(&storedVariant);
   if (storedVariant != 0xFF && isValidVariant(storedVariant))
     acVariant = storedVariant;
-  Serial.printf("[CFG] Loaded variant=%d (%s) uid=%s wake=%lu ssid=%s\n",
-                acVariant, variantName(acVariant), gStoredUid.c_str(),
+  gCtrlMode = (gStoredCtrlMode == (uint8_t)CTRL_LEARNED) ? CTRL_LEARNED : CTRL_PROTOCOL;
+  Serial.printf("[CFG] Loaded variant=%d (%s) ctrl=%s uid=%s wake=%lu ssid=%s\n",
+                acVariant, variantName(acVariant),
+                gCtrlMode == CTRL_LEARNED ? "LEARNED" : "PROTOCOL",
+                gStoredUid.c_str(),
                 (unsigned long)gStoredWakeSec,
                 gStoredWifiSsid.length() ? gStoredWifiSsid.c_str() : "(none)");
 }
@@ -398,27 +452,30 @@ static void loadStoredConfig() {
 //  BLE — send one line to phone
 // ============================================================
 void bleSend(const String& msg) {
-  if (!gBleConnected || gTxChar == nullptr) return;
-  const uint8_t nextTail = (uint8_t)((gBleNotifyTail + 1U) % BLE_NOTIFY_QUEUE_LEN);
-  if (nextTail == gBleNotifyHead) {
+  if (!gBleConnected || gTxChar == nullptr || gBleNotifyQueue == nullptr) return;
+  BleNotifyMsg item = {};
+  msg.substring(0, BLE_NOTIFY_MAX_LEN - 1).toCharArray(item.text, BLE_NOTIFY_MAX_LEN);
+  if (xQueueSend(gBleNotifyQueue, &item, 0) != pdTRUE) {
     Serial.printf("[BLE TX] Drop (queue full): %s\n", msg.c_str());
     return;
   }
-  gBleNotifyQueue[gBleNotifyTail] = msg;
-  gBleNotifyTail = nextTail;
 }
 
 static void pumpBleNotifications() {
-  if (!gBleConnected || gTxChar == nullptr) return;
-  if (gBleNotifyHead == gBleNotifyTail) return;
+  if (!gBleConnected || gTxChar == nullptr || gBleNotifyQueue == nullptr) return;
   if ((long)(millis() - gBleNextNotifyMs) < 0) return;
 
-  const String msg = gBleNotifyQueue[gBleNotifyHead];
-  gBleNotifyHead = (uint8_t)((gBleNotifyHead + 1U) % BLE_NOTIFY_QUEUE_LEN);
-  gTxChar->setValue(msg.c_str());
+  BleNotifyMsg item = {};
+  if (xQueueReceive(gBleNotifyQueue, &item, 0) != pdTRUE) return;
+  gTxChar->setValue(item.text);
   gTxChar->notify();
   gBleNextNotifyMs = millis() + 15UL;
-  Serial.printf("[BLE TX] %s\n", msg.c_str());
+  Serial.printf("[BLE TX] %s\n", item.text);
+}
+
+static bool bleNotifyQueueHasRoom(uint8_t count) {
+  if (gBleNotifyQueue == nullptr) return false;
+  return uxQueueSpacesAvailable(gBleNotifyQueue) >= count;
 }
 
 // ============================================================
@@ -548,13 +605,15 @@ static void bleSendAdminConfig() {
 //  BLE — send current state to phone
 // ============================================================
 void bleSendStatus() {
+  bleSend("FW:"   + String(IRTRACE_FW_VERSION));
   bleSend("VAR:"  + String(acVariant));
   bleSend("PWR:"  + String(acPower ? "ON" : "OFF"));
   bleSend("TEMP:" + String(gTxTemp));
   bleSend("RPT:"  + String(gTxRepeat));
   bleSend("RAW:"  + String(gRawEnabled ? "ON" : "OFF"));
   // LRN:MODE and all slot states are sent by learnSendAllStatus() — not here.
-  // Removing the duplicate keeps the on-connect queue well within 23 usable slots.
+  // Removing the duplicate keeps the on-connect queue comfortably inside
+  // BLE_NOTIFY_QUEUE_LEN.
 }
 
 // Defined here (after bleSend) because IR_LEARN.h forward-declared it.
@@ -568,6 +627,160 @@ void learnSendAllStatus() {
     bleSend("LRN:ACTIVE:" + String(gActiveLearnSlot));
 }
 
+static const char* txPowerString(uint8_t power) {
+  if (power == TX_POWER_ON)  return "ON";
+  if (power == TX_POWER_OFF) return "OFF";
+  return "";
+}
+
+static bool queueTxJob(uint8_t temp, uint8_t power, bool notifyBusy = true) {
+  if (gTxJobQueue == nullptr) {
+    if (notifyBusy) bleSend("ERR:TX queue unavailable");
+    return false;
+  }
+  TxJob job = { temp, power };
+  if (xQueueSend(gTxJobQueue, &job, 0) != pdTRUE) {
+    if (notifyBusy) bleSend("ERR:TX busy");
+    return false;
+  }
+  return true;
+}
+
+static bool txQueueIsEmpty() {
+  return gTxJobQueue == nullptr || uxQueueMessagesWaiting(gTxJobQueue) == 0;
+}
+
+static bool queueDeferredJob(const DeferredJob& job) {
+  if (gDeferredJobQueue == nullptr ||
+      xQueueSend(gDeferredJobQueue, &job, 0) != pdTRUE) {
+    bleSend("ERR:Device busy, try again");
+    return false;
+  }
+  return true;
+}
+
+static void sendAllLearnSlotStates() {
+  for (uint8_t i = 0; i < LEARN_NUM_SLOTS; i++) {
+    bleSend("LRN:SLOT:" + String(i) + ":" + learnSlotStateStr(i));
+  }
+}
+
+static void forceProtocolIfLearnedIncomplete() {
+  if (gCtrlMode != CTRL_LEARNED || learnAllSlotsSaved()) return;
+  if (!saveCtrlModeConfig((uint8_t)CTRL_PROTOCOL)) {
+    bleSend("ERR:Control mode save failed");
+    return;
+  }
+  gCtrlMode = CTRL_PROTOCOL;
+  bleSend("LRN:MODE:PROTOCOL");
+}
+
+static void processDeferredJobs() {
+  if (gDeferredJobQueue == nullptr) return;
+
+  DeferredJob job = {};
+  if (xQueueReceive(gDeferredJobQueue, &job, 0) != pdTRUE) return;
+
+  switch (job.type) {
+    case JOB_WIFI_SAVE: {
+      const String ssid(job.ssid);
+      const String pass(job.pass);
+      if (!saveWifiConfig(ssid, pass)) {
+        bleSend("ERR:Wi-Fi save failed");
+        return;
+      }
+      Serial.printf("[WIFI] Saved Credentials: SSID='%s'\n", ssid.c_str());
+      bleSend("WIFI:OK");
+      gLedSubmitPending = true;
+      return;
+    }
+
+    case JOB_ADMIN_SAVE: {
+      const String uid(job.uid);
+      if (!saveAdminConfig(uid, job.wakeSec)) {
+        bleSend("ERR:Admin save failed");
+        return;
+      }
+      Serial.printf("[ADMIN] Saved uid=%s wake=%lu sec\n",
+                    gStoredUid.c_str(), (unsigned long)gStoredWakeSec);
+      bleSend("ADMIN:SAVED");
+      gLedSubmitPending = true;
+      bleSendAdminConfig();
+      return;
+    }
+
+    case JOB_VARIANT_SAVE:
+      if (!saveVariantConfig(job.variant)) {
+        bleSend("ERR:Variant save failed");
+        return;
+      }
+      Serial.printf("[CFG] Saved variant=%d (%s)\n", job.variant, variantName(job.variant));
+      bleSend("SAVE:OK");
+      gLedSubmitPending = true;
+      bleSend("VAR:" + String(job.variant));
+      return;
+
+    case JOB_CTRL_MODE_SAVE: {
+      const CtrlMode newMode = (job.mode == (uint8_t)CTRL_LEARNED) ? CTRL_LEARNED : CTRL_PROTOCOL;
+      if (newMode == CTRL_LEARNED && !learnAllSlotsSaved()) {
+        bleSend("ERR:Learned mode requires all slots saved");
+        bleSend("LRN:MODE:" + String(gCtrlMode == CTRL_LEARNED ? "LEARNED" : "PROTOCOL"));
+        return;
+      }
+      if (!saveCtrlModeConfig((uint8_t)newMode)) {
+        bleSend("ERR:Control mode save failed");
+        return;
+      }
+      gCtrlMode = newMode;
+      bleSend("LRN:MODE:" + String(gCtrlMode == CTRL_LEARNED ? "LEARNED" : "PROTOCOL"));
+      Serial.println(gCtrlMode == CTRL_LEARNED
+                     ? F("[LEARN] Control mode → LEARNED")
+                     : F("[LEARN] Control mode → PROTOCOL"));
+      return;
+    }
+
+    case JOB_LEARN_SAVE:
+      if (!learnSaveSlot()) {
+        bleSend("ERR:Save failed — capture first");
+        return;
+      }
+      bleSend("LRN:SAVED:" + String(gActiveLearnSlot));
+      bleSend("LRN:SLOT:"  + String(gActiveLearnSlot) + ":SAVED");
+      gLedSubmitPending = true;
+      return;
+
+    case JOB_LEARN_DISCARD: {
+      const uint8_t prevSlot = gActiveLearnSlot;
+      learnDiscardCapture();
+      if (prevSlot < LEARN_NUM_SLOTS)
+        bleSend("LRN:SLOT:" + String(prevSlot) + ":" + learnSlotStateStr(prevSlot));
+      bleSend("LRN:DISCARDED");
+      return;
+    }
+
+    case JOB_LEARN_DELETE:
+      if (!learnDeleteSlot(job.slot)) {
+        bleSend("ERR:Delete failed");
+        return;
+      }
+      bleSend("LRN:SLOT:" + String(job.slot) + ":EMPTY");
+      forceProtocolIfLearnedIncomplete();
+      return;
+
+    case JOB_LEARN_DELETE_ALL:
+      if (!learnDeleteAllSlots()) {
+        bleSend("ERR:Delete all failed");
+        sendAllLearnSlotStates();
+        return;
+      }
+      forceProtocolIfLearnedIncomplete();
+      sendAllLearnSlotStates();
+      bleSend("LRN:ACTIVE:-1");
+      bleSend("LRN:DELETED_ALL");
+      return;
+  }
+}
+
 // ============================================================
 //  BLE — server connection callbacks
 // ============================================================
@@ -575,8 +788,7 @@ class BleServerCB : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* s, NimBLEConnInfo& info) override {
     gBleConnected = true;
     gAdminUnlocked = false;
-    gBleNotifyHead = 0;
-    gBleNotifyTail = 0;
+    if (gBleNotifyQueue != nullptr) xQueueReset(gBleNotifyQueue);
     gBleNextNotifyMs = millis() + 300UL;
     Serial.println(F("[BLE] Phone connected"));
     setLedBase(LED_BLE_CONN);  // solid ON — user is now in config mode
@@ -589,8 +801,7 @@ class BleServerCB : public NimBLEServerCallbacks {
     gNeedsAdvRestart = true;
     gAdminUnlocked   = false;
     gFindRxActive    = false;   // stop find mode on disconnect
-    gBleNotifyHead   = 0;
-    gBleNotifyTail   = 0;
+    if (gBleNotifyQueue != nullptr) xQueueReset(gBleNotifyQueue);
     setLedBase(LED_BLE_ADV);    // back to heartbeat — advertising again
     Serial.printf("[BLE] Disconnected (reason %d)\n", reason);
   }
@@ -599,7 +810,7 @@ class BleServerCB : public NimBLEServerCallbacks {
 // ============================================================
 //  BLE — RX callback
 //  RULE: never block here, never call Handle_AC() here.
-//        Queue via gTxJob and execute in loop() only.
+//        Queue via gTxJobQueue and execute in loop() only.
 // ============================================================
 class BleRxCB : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& info) override {
@@ -607,6 +818,11 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
     cmd.trim();
     if (cmd.length() == 0) return;
     Serial.printf("[BLE RX] %s\n", cmd.c_str());
+
+    if (cmd.equalsIgnoreCase("ver") || cmd.equalsIgnoreCase("version")) {
+      bleSend("FW:" + String(IRTRACE_FW_VERSION));
+      return;
+    }
 
     // ── wscan  trigger Wi-Fi scan ─────────────────────────
     if (cmd.equalsIgnoreCase("wscan")) {
@@ -631,14 +847,15 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
         bleSend("ERR:SSID is required");
         return;
       }
-      if (!saveWifiConfig(ssid, pass)) {
-        bleSend("ERR:Wi-Fi save failed");
+      if (ssid.length() > 32 || pass.length() > 64) {
+        bleSend("ERR:Wi-Fi field too long");
         return;
       }
-      Serial.printf("[WIFI] Saved Credentials: SSID='%s' PASS='%s'\n",
-                    ssid.c_str(), pass.c_str());
-      bleSend("WIFI:OK");
-      gLedSubmitPending = true;  // trigger success overlay
+      DeferredJob job = {};
+      job.type = JOB_WIFI_SAVE;
+      ssid.toCharArray(job.ssid, sizeof(job.ssid));
+      pass.toCharArray(job.pass, sizeof(job.pass));
+      queueDeferredJob(job);
       return;
     }
 
@@ -685,16 +902,12 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
       }
 
       const uint32_t wakeSec = (uint32_t)wakeRaw.toInt();
-      if (!saveAdminConfig(uid, wakeSec)) {
-        bleSend("ERR:Admin save failed");
-        return;
-      }
-
-      Serial.printf("[ADMIN] Saved uid=%s wake=%lu sec\n",
-                    gStoredUid.c_str(), (unsigned long)gStoredWakeSec);
-      bleSend("ADMIN:SAVED");
-      gLedSubmitPending = true;  // trigger success overlay
-      bleSendAdminConfig();
+      DeferredJob job = {};
+      job.type = JOB_ADMIN_SAVE;
+      const String paddedUid = nvsConfigPadUid(uid);
+      paddedUid.toCharArray(job.uid, sizeof(job.uid));
+      job.wakeSec = wakeSec;
+      queueDeferredJob(job);
       return;
     }
 
@@ -734,17 +947,13 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
       if (cmd.length() > 3) temp = cmd.substring(3).toInt();
       if (temp < 16 || temp > 30) { bleSend("ERR:Temp out of range 16-30"); return; }
       gTxTemp        = temp;
-      gTxJob.temp    = temp;
-      gTxJob.power   = "ON";
-      gTxJob.pending = true;
+      queueTxJob((uint8_t)temp, TX_POWER_ON);
       return;
     }
 
     // ── off  power OFF ────────────────────────────────────
     if (cmd.equalsIgnoreCase("off")) {
-      gTxJob.temp    = gTxTemp;
-      gTxJob.power   = "OFF";
-      gTxJob.pending = true;
+      queueTxJob((uint8_t)gTxTemp, TX_POWER_OFF);
       return;
     }
 
@@ -753,9 +962,7 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
       int temp = cmd.substring(2).toInt();
       if (temp < 16 || temp > 30) { bleSend("ERR:Temp out of range 16-30"); return; }
       gTxTemp        = temp;
-      gTxJob.temp    = temp;
-      gTxJob.power   = "";   // keep current power state
-      gTxJob.pending = true;
+      queueTxJob((uint8_t)temp, TX_POWER_KEEP);
       return;
     }
 
@@ -776,18 +983,12 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
     // ── status ────────────────────────────────────────────
     if (cmd.equalsIgnoreCase("status")) { bleSendStatus(); return; }
 
-    // ── save  (NVS placeholder — coming soon) ─────────────
+    // ── save  selected variant to NVS ─────────────────────
     if (cmd.equalsIgnoreCase("save")) {
-      Serial.printf("[NVS] Save requested — variant=%d (%s)  [NVS not yet implemented]\n",
-                    acVariant, variantName(acVariant));
-      if (!saveVariantConfig(acVariant)) {
-        bleSend("ERR:Variant save failed");
-        return;
-      }
-      Serial.printf("[CFG] Saved variant=%d (%s)\n", acVariant, variantName(acVariant));
-      bleSend("SAVE:OK");
-      gLedSubmitPending = true;  // trigger success overlay
-      bleSend("VAR:" + String(acVariant));   // echo back confirmation for now
+      DeferredJob job = {};
+      job.type = JOB_VARIANT_SAVE;
+      job.variant = acVariant;
+      queueDeferredJob(job);
       return;
     }
 
@@ -801,15 +1002,16 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
     if (cmd.startsWith("LRN:MODE:")) {
       String mode = cmd.substring(9);
       mode.trim();
-      if (mode.equalsIgnoreCase("LEARNED")) {
-        gCtrlMode = CTRL_LEARNED;
-        bleSend("LRN:MODE:LEARNED");
-        Serial.println(F("[LEARN] Control mode → LEARNED"));
-      } else {
-        gCtrlMode = CTRL_PROTOCOL;
-        bleSend("LRN:MODE:PROTOCOL");
-        Serial.println(F("[LEARN] Control mode → PROTOCOL"));
+      CtrlMode newMode = mode.equalsIgnoreCase("LEARNED") ? CTRL_LEARNED : CTRL_PROTOCOL;
+      if (newMode == CTRL_LEARNED && !learnAllSlotsSaved()) {
+        bleSend("ERR:Learned mode requires all slots saved");
+        bleSend("LRN:MODE:" + String(gCtrlMode == CTRL_LEARNED ? "LEARNED" : "PROTOCOL"));
+        return;
       }
+      DeferredJob job = {};
+      job.type = JOB_CTRL_MODE_SAVE;
+      job.mode = (uint8_t)newMode;
+      queueDeferredJob(job);
       return;
     }
 
@@ -818,6 +1020,13 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
       const int slot = cmd.substring(10).toInt();
       if (slot < 0 || slot >= LEARN_NUM_SLOTS) {
         bleSend("ERR:Invalid slot " + String(slot));
+        return;
+      }
+      // Reject if already saved — user must DELETE first to re-learn.
+      // Without this guard the firmware sends WAIT but the capture hook
+      // silently skips every decode, leaving the UI stuck indefinitely.
+      if (gSlotState[(uint8_t)slot] == SLOT_SAVED) {
+        bleSend("ERR:Slot already saved — delete first, then re-learn");
         return;
       }
       learnBeginCapture((uint8_t)slot);
@@ -845,35 +1054,44 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
 
     // ── LRN:SAVE  commit RAM capture to NVS ───────────────
     if (cmd.equalsIgnoreCase("LRN:SAVE")) {
-      if (!learnSaveSlot()) {
+      if (gActiveLearnSlot >= LEARN_NUM_SLOTS ||
+          gSlotState[gActiveLearnSlot] != SLOT_CAPTURED ||
+          gLearnRamLen == 0) {
         bleSend("ERR:Save failed — capture first");
         return;
       }
-      bleSend("LRN:SAVED:" + String(gActiveLearnSlot));
-      bleSend("LRN:SLOT:"  + String(gActiveLearnSlot) + ":SAVED");
-      gLedSubmitPending = true;
+      DeferredJob job = {};
+      job.type = JOB_LEARN_SAVE;
+      queueDeferredJob(job);
       return;
     }
 
     // ── LRN:DISCARD  throw away unsaved capture ────────────
     if (cmd.equalsIgnoreCase("LRN:DISCARD")) {
-      const uint8_t prevSlot = gActiveLearnSlot;
-      learnDiscardCapture();
-      if (prevSlot < LEARN_NUM_SLOTS)
-        bleSend("LRN:SLOT:" + String(prevSlot) + ":" + learnSlotStateStr(prevSlot));
-      bleSend("LRN:DISCARDED");
+      DeferredJob job = {};
+      job.type = JOB_LEARN_DISCARD;
+      queueDeferredJob(job);
       return;
     }
 
     // ── LRN:DELETE:<slot>  erase slot from NVS ────────────
+    if (cmd.equalsIgnoreCase("LRN:DELETE_ALL")) {
+      DeferredJob job = {};
+      job.type = JOB_LEARN_DELETE_ALL;
+      queueDeferredJob(job);
+      return;
+    }
+
     if (cmd.startsWith("LRN:DELETE:")) {
       const int slot = cmd.substring(11).toInt();
       if (slot < 0 || slot >= LEARN_NUM_SLOTS) {
         bleSend("ERR:Invalid slot " + String(slot));
         return;
       }
-      learnDeleteSlot((uint8_t)slot);
-      bleSend("LRN:SLOT:" + String(slot) + ":EMPTY");
+      DeferredJob job = {};
+      job.type = JOB_LEARN_DELETE;
+      job.slot = (uint8_t)slot;
+      queueDeferredJob(job);
       return;
     }
 
@@ -886,6 +1104,15 @@ class BleRxCB : public NimBLECharacteristicCallbacks {
 // ============================================================
 void setupBle() {
   Serial.println(F("[BLE] Initializing..."));
+  if (gBleNotifyQueue == nullptr)
+    gBleNotifyQueue = xQueueCreate(BLE_NOTIFY_QUEUE_LEN, sizeof(BleNotifyMsg));
+  if (gDeferredJobQueue == nullptr)
+    gDeferredJobQueue = xQueueCreate(DEFERRED_JOB_QUEUE_LEN, sizeof(DeferredJob));
+  if (gTxJobQueue == nullptr)
+    gTxJobQueue = xQueueCreate(TX_JOB_QUEUE_LEN, sizeof(TxJob));
+  if (gBleNotifyQueue == nullptr || gDeferredJobQueue == nullptr || gTxJobQueue == nullptr)
+    Serial.println(F("[BLE] Queue allocation failed"));
+
   NimBLEDevice::init(BLE_DEVICE_NAME);
 
   NimBLEServer* server = NimBLEDevice::createServer();
@@ -922,16 +1149,33 @@ void setupBle() {
 //  RMT handles IR timing in hardware — BLE stays connected
 //  throughout TX with no interference.
 // ============================================================
+static void sendLearnedRawRmt() {
+  irrecv.disableIRIn();
+
+  // Keep the entire learned frame in one RMT burst. Captured AC frames can
+  // contain long intra-frame spaces that would otherwise auto-flush early.
+  irsend.suppressAutoFlush(true);
+  irsend.sendRaw(gLearnReplayBuf, gLearnReplayLen, gLearnReplayCarrier);
+  irsend.suppressAutoFlush(false);
+
+  if (gLearnReplayLen & 1U) {
+    // IRsend::sendRaw() can end on a mark for odd-length raw arrays.
+    // Pair that pending mark with a final silence that triggers RMT flush.
+    irsend.space(36001);
+  } else {
+    irsend.flushTx();
+  }
+
+  led_ir_burst();
+  irrecv.enableIRIn();
+}
+
 void executeTx() {
   // ── Test replay from learn workflow (LRN:REPLAY command) ────
   if (gLearnReplayPending) {
     gLearnReplayPending = false;
     if (gLearnReplayLen > 0) {
-      irrecv.disableIRIn();
-      irsend.sendRaw(gLearnReplayBuf, gLearnReplayLen, gLearnReplayCarrier);
-      pinMode(kIrLed, OUTPUT); digitalWrite(kIrLed, LOW);
-      led_ir_burst();
-      irrecv.enableIRIn();
+      sendLearnedRawRmt();
       bleSend("LRN:REPLAYED:" + String(gLearnReplaySlot));
       Serial.printf("[LEARN] Test-replayed slot %d (%s)  %u marks/spaces\n",
                     gLearnReplaySlot, kLearnSlotNames[gLearnReplaySlot], gLearnReplayLen);
@@ -940,12 +1184,16 @@ void executeTx() {
     }
   }
 
-  if (!gTxJob.pending) return;
-  gTxJob.pending = false;
+  TxJob txJob = {};
+  if (gTxJobQueue == nullptr ||
+      xQueueReceive(gTxJobQueue, &txJob, 0) != pdTRUE) {
+    return;
+  }
+  const String txPower = String(txPowerString(txJob.power));
 
   // ── Learned fallback mode ────────────────────────────────────
   if (gCtrlMode == CTRL_LEARNED) {
-    const uint8_t slot = learnSlotForJob(gTxJob.power, gTxJob.temp);
+    const uint8_t slot = learnSlotForJob(txPower, txJob.temp);
     if (slot >= LEARN_NUM_SLOTS || gSlotState[slot] != SLOT_SAVED) {
       // Receiver still running — disableIRIn() not yet called, so do NOT enableIRIn().
       bleSend("ERR:Slot " + String(kLearnSlotNames[slot < LEARN_NUM_SLOTS ? slot : 0])
@@ -957,21 +1205,17 @@ void executeTx() {
       bleSend("ERR:Slot load failed");
       return;
     }
-    irrecv.disableIRIn();
-    irsend.sendRaw(gLearnReplayBuf, gLearnReplayLen, gLearnReplayCarrier);
-    pinMode(kIrLed, OUTPUT); digitalWrite(kIrLed, LOW);
-    led_ir_burst();
-    irrecv.enableIRIn();
+    sendLearnedRawRmt();
 
-    if (gTxJob.power == "ON")  acPower = true;
-    if (gTxJob.power == "OFF") acPower = false;
+    if (txJob.power == TX_POWER_ON)  acPower = true;
+    if (txJob.power == TX_POWER_OFF) acPower = false;
 
     if (gFindRxActive) {
       bleSend("FIND_RX:PULSE");
     } else {
       bleSend("TX:OK");
       bleSend("PWR:"  + String(acPower ? "ON" : "OFF"));
-      bleSend("TEMP:" + String(gTxJob.temp));
+      bleSend("TEMP:" + String(txJob.temp));
     }
     return;
   }
@@ -979,14 +1223,14 @@ void executeTx() {
   // ── Protocol mode (default) ──────────────────────────────────
   Serial.printf("[TX] variant=%d (%s)  power=%s  temp=%d  repeat=%d\n",
                 acVariant, variantName(acVariant),
-                gTxJob.power.c_str(), gTxJob.temp, gTxRepeat);
+                txPower.c_str(), txJob.temp, gTxRepeat);
 
   // Pause IR receiver — prevents self-capture of transmitted signal
   irrecv.disableIRIn();
 
   for (uint8_t i = 0; i < gTxRepeat; i++) {
     Serial.printf("[TX] %d/%d\n", i + 1, gTxRepeat);
-    Handle_AC(gTxJob.temp, gTxJob.power);
+    Handle_AC(txJob.temp, txPower);
     if (i < gTxRepeat - 1) delay(200);  // gap between repeats
   }
 
@@ -994,8 +1238,8 @@ void executeTx() {
   irrecv.enableIRIn();
 
   // Mirror power state
-  if      (gTxJob.power == "ON")  acPower = true;
-  else if (gTxJob.power == "OFF") acPower = false;
+  if      (txJob.power == TX_POWER_ON)  acPower = true;
+  else if (txJob.power == TX_POWER_OFF) acPower = false;
 
   // In find mode send a single pulse heartbeat — keeps the log clean
   if (gFindRxActive) {
@@ -1003,7 +1247,7 @@ void executeTx() {
   } else {
     bleSend("TX:OK");
     bleSend("PWR:"  + String(acPower ? "ON" : "OFF"));
-    bleSend("TEMP:" + String(gTxJob.temp));
+    bleSend("TEMP:" + String(txJob.temp));
   }
 }
 
@@ -1053,12 +1297,22 @@ void setup() {
 #else
   Serial.begin(kBaudRate, SERIAL_8N1);
 #endif
-  while (!Serial) delay(50);
+  {
+    const unsigned long serialStartMs = millis();
+    while (!Serial && (long)(millis() - serialStartMs) < 2000L) delay(50);
+  }
 
   assert(irutils::lowLevelSanityCheck() == 0);
+  Serial.printf("[FW] IrTrace %s\n", IRTRACE_FW_VERSION);
   Serial.printf("\n" D_STR_IRRECVDUMP_STARTUP "\n", kRecvPin);
   loadStoredConfig();
   learnInit();           // scan irlearn NVS, mark saved slots
+  if (gCtrlMode == CTRL_LEARNED && !learnAllSlotsSaved()) {
+    if (saveCtrlModeConfig((uint8_t)CTRL_PROTOCOL)) {
+      gCtrlMode = CTRL_PROTOCOL;
+      Serial.println(F("[LEARN] Stored learned mode invalid; reverted to PROTOCOL"));
+    }
+  }
 
   // 1. Wi-Fi Scan — LED stays solid ON (loop not running yet, can't animate)
   performWifiScan();
@@ -1085,9 +1339,11 @@ void setup() {
 void loop() {
   pumpLed();              // LED state machine — always first, never blocks
   pumpBleNotifications();
+  processDeferredJobs();
 
   // Send cached Wi-Fi list to newly connected phone (deferred from onConnect)
-  if (gWifiSendPending) {
+  const uint8_t wifiMsgsNeeded = gWifiCount == 0 ? 1 : (uint8_t)(gWifiCount + 1);
+  if (gWifiSendPending && bleNotifyQueueHasRoom(wifiMsgsNeeded)) {
     gWifiSendPending = false;
     sendWifiListToBle();
   }
@@ -1111,12 +1367,11 @@ void loop() {
   executeTx();
 
   // Find-receiver mode — queue t 24 every 3 s, only when TX slot is free
-  if (gFindRxActive && !gTxJob.pending &&
+  if (gFindRxActive && txQueueIsEmpty() &&
       (long)(millis() - gFindRxNextMs) >= 0) {
-    gTxJob.temp    = 24;
-    gTxJob.power   = "";          // temperature only — no power toggle
-    gTxJob.pending = true;
-    gFindRxNextMs  = millis() + 3000UL;
+    if (queueTxJob(24, TX_POWER_KEEP, false)) {
+      gFindRxNextMs = millis() + 3000UL;
+    }
   }
 
   // IR decode — IRrecvDumpV3 core logic
@@ -1160,6 +1415,7 @@ void loop() {
     // If a learn slot is active, grab the raw timing into gLearnRamBuf
     // instead of (or as well as) doing normal protocol decode.
     if (gActiveLearnSlot < LEARN_NUM_SLOTS &&
+        gLearnCaptureArmed &&
         gSlotState[gActiveLearnSlot] != SLOT_SAVED) {
       if (learnStoreCapture(&results)) {
         bleSend("LRN:CAPTURED:" + String(gActiveLearnSlot));
