@@ -1078,11 +1078,18 @@ async function onConnected() {
   document.getElementById('discovery-card').style.display = 'block';
   setPill('ir-pill', 'pill pill-live', 'Live');
   addLog('sys', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
-  // Request Wi-Fi list explicitly now that CCCD is enabled, the notification
-  // listener is registered, and resetWifiUi() has already cleared stale state.
-  // This replaces the device-side auto-push (removed from onConnect in BLE_CONFIG.h)
-  // which raced against JS initialisation and caused "No networks found".
+  // Pull all device state explicitly now that CCCD is enabled and the listener
+  // is registered.  The firmware calls bleSendStatus() + learnSendAllStatus() in
+  // its onConnect() callback, but those notifications fire before JS has enabled
+  // CCCD — NimBLE drops them silently.  Requesting here guarantees delivery.
+  //
+  // Order matters:
+  //   1. wget       — WiFi list (resetWifiUi() already cleared stale data above)
+  //   2. status     — FW version, variant, power state, raw mode
+  //   3. LRN:STATUS — all 16 slot states + ctrl mode (fixes DELETE disabled bug)
   await sendCmd("wget");
+  await sendCmd("status");
+  await sendCmd("LRN:STATUS");
 }
 
 function onDisconnected() {
@@ -1091,6 +1098,8 @@ function onDisconnected() {
   pendingTestVariant = null;
   resetConfirmedProtocol();
   resetWifiUi('Scan Ready');
+  resetLearnUi();   // clears learnActiveSlot, learnSlotStates[], ctrl mode display —
+                    // must be called here; onConnected() re-fetches fresh state via LRN:STATUS
   firmwareVersion = '';
   updateVersionLine();
   document.getElementById('btn-connect').classList.remove('conn');
@@ -1957,7 +1966,14 @@ function learnSelectSlot(i) {
   learnActiveSlot = i;
   updateLearnSlotGrid();
   updateLearnButtons();
-  setLearnStatus('Slot ' + LEARN_SLOT_NAMES[i] + ' selected — press LEARN to capture.');
+  const state = learnSlotStates[i];
+  if (state === 'SAVED') {
+    setLearnStatus('Slot ' + LEARN_SLOT_NAMES[i] + ' already saved — press DELETE to re-learn.', 'ok');
+  } else if (state === 'CAPTURED') {
+    setLearnStatus('Slot ' + LEARN_SLOT_NAMES[i] + ' captured — press SAVE to store or DISCARD to retry.');
+  } else {
+    setLearnStatus('Slot ' + LEARN_SLOT_NAMES[i] + ' selected — press LEARN to capture.');
+  }
 }
 
 function updateLearnButtons() {
