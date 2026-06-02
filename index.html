@@ -1,0 +1,2308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IrTrace BLE</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg:        #eef0f4;
+    --surface:   #ffffff;
+    --surface2:  #f7f8fa;
+    --border:    #e2e5eb;
+    --text:      #111318;
+    --muted:     #6b7280;
+    --accent:    #0052cc;
+    --accent-lt: #e8f0ff;
+    --green:     #16a34a;
+    --green-lt:  #dcfce7;
+    --red:       #dc2626;
+    --red-lt:    #fee2e2;
+    --orange:    #d97706;
+    --orange-lt: #fef3c7;
+    --mono:      'JetBrains Mono', monospace;
+    --sans:      'Outfit', sans-serif;
+    --r:         12px;
+    --shadow:    0 1px 3px rgba(0,0,0,.07);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); padding-bottom: 48px; }
+
+  /* ── HEADER ─────────────────────────────────────────────── */
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 20px; height: 58px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100; box-shadow: var(--shadow);
+  }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand-icon {
+    width: 36px; height: 36px; background: var(--accent); border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .brand-icon svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .brand-name { font-family: var(--mono); font-weight: 700; font-size: .95rem; }
+  .brand-sub  { font-size: .63rem; color: var(--muted); font-family: var(--mono); }
+  .brand-sub.ver-mismatch { color: var(--red); }
+  .header-actions { display: flex; align-items: center; gap: 8px; }
+  .guide-link {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 36px; padding: 8px 12px;
+    border: 1px solid var(--border); border-radius: 9px;
+    font-family: var(--sans); font-size: .82rem; font-weight: 700;
+    color: var(--accent); background: var(--surface2); text-decoration: none;
+    transition: all .15s;
+  }
+  .guide-link:hover { border-color: #b9cdfa; background: var(--accent-lt); }
+  #btn-connect {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 18px; border: none; border-radius: 9px;
+    font-family: var(--sans); font-size: .85rem; font-weight: 600;
+    cursor: pointer; background: var(--accent); color: #fff;
+    box-shadow: 0 2px 6px rgba(0,82,204,.25); transition: all .15s;
+  }
+  #btn-connect:hover      { background: #003fa3; }
+  #btn-connect.conn       { background: var(--red-lt); color: var(--red); box-shadow: none; }
+  #btn-connect.conn:hover { background: #fecaca; }
+  .ble-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: rgba(255,255,255,.6); flex-shrink: 0;
+  }
+  #btn-connect.conn .ble-dot { background: var(--red); box-shadow: 0 0 0 3px rgba(220,38,38,.2); }
+
+  @media (max-width: 460px) {
+    header { padding: 0 12px; }
+    .brand-sub { display: none; }
+    .guide-link { padding: 8px 10px; font-size: .76rem; }
+    #btn-connect { padding: 9px 12px; }
+  }
+
+  /* ── STATUS STRIP ───────────────────────────────────────── */
+  #status-strip {
+    font-family: var(--mono); font-size: .7rem;
+    padding: 7px 20px; display: flex; align-items: center; gap: 8px;
+    background: var(--accent-lt); color: var(--accent);
+    border-bottom: 1px solid #c5d8ff; transition: all .3s;
+  }
+  #status-strip.ok   { background: var(--green-lt);  color: var(--green);  border-color: #bbf7d0; }
+  #status-strip.err  { background: var(--red-lt);    color: var(--red);    border-color: #fecaca; }
+  #status-strip.warn { background: var(--orange-lt); color: var(--orange); border-color: #fde68a; }
+  .sdot {
+    width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0;
+    animation: blink 2s infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+  #status-strip.ok .sdot, #status-strip.err .sdot { animation: none; }
+
+  /* ── LAYOUT ─────────────────────────────────────────────── */
+  .wrap { max-width: 600px; margin: 0 auto; padding: 20px 16px 0; display: flex; flex-direction: column; gap: 14px; }
+
+  /* ── CARD ───────────────────────────────────────────────── */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 11px 16px; background: var(--surface2); border-bottom: 1px solid var(--border);
+  }
+  .card-label { font-family: var(--mono); font-size: .65rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .pill { font-family: var(--mono); font-size: .62rem; font-weight: 700; padding: 3px 9px; border-radius: 20px; }
+  .pill-idle { background: #f1f3f7; color: var(--muted); }
+  .pill-live { background: var(--green-lt); color: var(--green); }
+  .pill-proto{ background: var(--accent-lt); color: var(--accent); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── IR RX GRID ─────────────────────────────────────────── */
+  .ir-grid { display: grid; grid-template-columns: 1fr 1fr; }
+  .ir-cell { padding: 16px 18px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .ir-cell:nth-child(2n)        { border-right: none; }
+  .ir-cell.full                 { grid-column: 1/-1; border-right: none; }
+  .ir-cell:nth-last-child(-n+2) { border-bottom: none; }
+  .ir-cell.full:last-child      { border-bottom: none; }
+  .ir-field { font-family: var(--mono); font-size: .6rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #a0aab8; margin-bottom: 5px; }
+  .ir-val   { font-family: var(--mono); font-size: 1.2rem; font-weight: 700; color: var(--text); transition: color .2s; min-height: 1.4rem; }
+  .ir-val.empty { color: #d1d5db; font-size: 1rem; }
+  .ir-val.proto { color: var(--accent); font-size: 1rem; }
+  .ir-val.on    { color: var(--green); }
+  .ir-val.off   { color: var(--red); }
+  .ir-val.na    { color: #c5cad4; font-size: .9rem; }
+  @keyframes flash { 0%{background:#dbeafe} 100%{background:var(--surface)} }
+  .ir-cell.flash { animation: flash .5s ease-out forwards; }
+
+  /* ── DISCOVERY CARD ─────────────────────────────────────── */
+  #discovery-card { display: none; }
+
+  .disc-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+
+  /* Temp control */
+  .temp-ctrl-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px;
+  }
+  .temp-ctrl-lbl { font-family: var(--mono); font-size: .68rem; font-weight: 700; color: var(--muted); flex-shrink: 0; }
+  .btn-adj {
+    width: 36px; height: 36px; border: 1.5px solid var(--border); border-radius: 8px;
+    background: var(--bg); font-size: 1.2rem; font-weight: 700; color: var(--text);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all .12s; flex-shrink: 0;
+  }
+  .btn-adj:hover    { border-color: var(--accent); background: var(--accent-lt); color: var(--accent); }
+  .btn-adj:disabled { opacity: .4; cursor: not-allowed; }
+  .temp-display-big {
+    flex: 1; text-align: center;
+    font-family: var(--mono); font-size: 1.6rem; font-weight: 700; color: var(--accent);
+  }
+  .temp-display-big span { font-size: .8rem; color: var(--muted); }
+
+  /* Active variant tag */
+  .active-tag {
+    font-family: var(--mono); font-size: .68rem;
+    padding: 7px 12px; border-radius: 8px;
+    background: var(--green-lt); color: var(--green);
+    border: 1px solid #86efac;
+  }
+  .active-tag span { font-weight: 700; }
+
+  /* Section sub-header */
+  .section-head {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-label {
+    font-family: var(--mono); font-size: .62rem; font-weight: 700;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+  }
+  .section-badge {
+    font-family: var(--mono); font-size: .58rem; font-weight: 700;
+    padding: 2px 7px; border-radius: 20px;
+    background: var(--accent-lt); color: var(--accent);
+  }
+
+  /* Protocol dropdowns */
+  .proto-select {
+    width: 100%; padding: 10px 12px;
+    border: 1.5px solid var(--border); border-radius: 8px;
+    font-family: var(--mono); font-size: .78rem; color: var(--text);
+    background: var(--bg); outline: none; cursor: pointer;
+    transition: border-color .15s;
+  }
+  .proto-select:focus    { border-color: var(--accent); background: #fff; }
+  .proto-select:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* Test button row */
+  .test-row { display: flex; gap: 8px; }
+  .btn-test {
+    flex: 1; padding: 11px 6px;
+    border: none; border-radius: 9px;
+    font-family: var(--mono); font-size: .75rem; font-weight: 700;
+    cursor: pointer; transition: all .15s; letter-spacing: .04em;
+  }
+  .btn-test:disabled { opacity: .35; cursor: not-allowed; }
+  .btn-test.off  { background: var(--red-lt);    color: var(--red);    border: 1.5px solid #fca5a5; }
+  .btn-test.on   { background: var(--green-lt);  color: var(--green);  border: 1.5px solid #86efac; }
+  .btn-test.temp { background: var(--accent-lt); color: var(--accent); border: 1.5px solid #93c5fd; }
+  .btn-test.off:not(:disabled):hover  { background: #fecaca; }
+  .btn-test.on:not(:disabled):hover   { background: #bbf7d0; }
+  .btn-test.temp:not(:disabled):hover { background: #bfdbfe; }
+
+  /* Section divider */
+  .section-divider { height: 1px; background: var(--border); }
+
+  /* ── FIND RX BUTTON ─────────────────────────────────────── */
+  .btn-find {
+    width: 100%; padding: 12px; border-radius: 9px;
+    border: 1.5px solid var(--border);
+    font-family: var(--mono); font-size: .78rem; font-weight: 700;
+    background: var(--surface2); color: var(--muted);
+    cursor: pointer; transition: all .2s; letter-spacing: .04em;
+  }
+  .btn-find:disabled { opacity: .35; cursor: not-allowed; }
+  .btn-find.scanning {
+    background: var(--orange-lt); color: var(--orange);
+    border-color: #fde68a;
+    animation: find-pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes find-pulse {
+    0%,100% { box-shadow: 0 0 0 0   rgba(217,119,6,.35); }
+    50%      { box-shadow: 0 0 0 7px rgba(217,119,6,.0);  }
+  }
+  .find-hint {
+    font-family: var(--mono); font-size: .65rem; color: var(--orange);
+    text-align: center; letter-spacing: .04em; padding: 2px 0;
+    transition: opacity .2s;
+  }
+
+  /* ── PROTO DISABLED NOTICE ─────────────────────────────── */
+  .proto-disabled-notice {
+    font-family: var(--mono); font-size: .7rem;
+    padding: 9px 12px; border-radius: 8px;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--muted); text-align: center;
+  }
+
+  /* ── SAVE CONFIGURATION CARD ────────────────────────────── */
+  .save-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+  .save-checklist { display: flex; flex-direction: column; gap: 8px; }
+
+  .check-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; border-radius: 8px;
+    background: var(--surface2); border: 1px solid var(--border);
+    font-family: var(--mono); font-size: .73rem;
+    transition: background .2s, border-color .2s;
+  }
+  .check-item .chk-icon { font-size: .95rem; flex-shrink: 0; width: 18px; text-align: center; }
+  .check-item .chk-lbl  { color: var(--muted); }
+  .check-item.ready     { background: var(--green-lt); border-color: #86efac; }
+  .check-item.ready .chk-lbl { color: var(--green); font-weight: 700; }
+  .check-item.missing   { background: var(--red-lt); border-color: #fca5a5; animation: chk-shake .35s ease; }
+  .check-item.missing .chk-lbl { color: var(--red); font-weight: 600; }
+
+  @keyframes chk-shake {
+    0%,100% { transform: translateX(0); }
+    20%     { transform: translateX(-5px); }
+    60%     { transform: translateX(5px); }
+    80%     { transform: translateX(-3px); }
+  }
+
+  .btn-save-all {
+    width: 100%; padding: 15px;
+    border: none; border-radius: 10px;
+    font-family: var(--mono); font-size: .88rem; font-weight: 700;
+    background: var(--accent); color: #fff;
+    cursor: pointer; transition: background .15s; letter-spacing: .04em;
+    box-shadow: 0 2px 8px rgba(0,82,204,.22);
+  }
+  .btn-save-all:hover:not(:disabled) { background: #003fa3; }
+  .btn-save-all:disabled { background: #d1d5db; cursor: not-allowed; box-shadow: none; }
+  .btn-save-all.saving  { background: var(--orange); box-shadow: none; }
+  .btn-save-all.success { background: var(--green);  box-shadow: none; }
+
+  /* No-candidate notice */
+  .no-candidate {
+    font-family: var(--mono); font-size: .7rem; color: var(--orange);
+    background: var(--orange-lt); border: 1px solid #fde68a;
+    border-radius: 8px; padding: 9px 12px;
+  }
+
+  /* ── LEARN FALLBACK CARD ──────────────────────────────── */
+  #learn-card { }
+
+  .lrn-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+
+  .lrn-mode-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px;
+  }
+  .lrn-mode-lbl { font-family: var(--mono); font-size: .65rem; font-weight: 700; color: var(--muted); flex-shrink: 0; }
+  .lrn-mode-btns { display: flex; gap: 6px; flex: 1; }
+  .btn-lrn-mode {
+    flex: 1; padding: 8px;
+    border: 1.5px solid var(--border); border-radius: 8px;
+    font-family: var(--mono); font-size: .72rem; font-weight: 700;
+    background: var(--bg); color: var(--muted); cursor: pointer; transition: all .15s;
+  }
+  .btn-lrn-mode:disabled { opacity: .35; cursor: not-allowed; }
+  .btn-lrn-mode.active-protocol { border-color: var(--accent); background: var(--accent-lt); color: var(--accent); }
+  .btn-lrn-mode.active-learned  { border-color: var(--green);  background: var(--green-lt);  color: var(--green); }
+
+  .lrn-note {
+    font-family: var(--mono); font-size: .68rem; line-height: 1.6; color: var(--muted);
+    background: var(--orange-lt); border: 1px solid #fde68a; border-radius: 8px; padding: 10px 12px;
+  }
+
+  /* Slot grid */
+  .lrn-slot-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+  }
+  .lrn-slot {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 8px 4px; border-radius: 9px;
+    border: 1.5px solid var(--border); background: var(--surface2);
+    cursor: pointer; transition: all .15s; user-select: none;
+  }
+  .lrn-slot:hover:not(.disabled) { border-color: var(--accent); background: var(--accent-lt); }
+  .lrn-slot.selected { border-color: var(--accent); background: var(--accent-lt); }
+  .lrn-slot.saved    { border-color: var(--green);  background: var(--green-lt); }
+  .lrn-slot.captured { border-color: var(--orange); background: var(--orange-lt); }
+  .lrn-slot.selected.saved    { border-color: var(--green);  background: var(--green-lt); }
+  .lrn-slot.selected.captured { border-color: var(--orange); background: var(--orange-lt); }
+  .lrn-slot.disabled { opacity: .4; cursor: not-allowed; }
+  .lrn-slot-name { font-family: var(--mono); font-size: .6rem; font-weight: 700; color: var(--text); text-align: center; line-height: 1.2; }
+  .lrn-slot-dot  { width: 7px; height: 7px; border-radius: 50%; background: var(--border); }
+  .lrn-slot.saved    .lrn-slot-dot { background: var(--green); }
+  .lrn-slot.captured .lrn-slot-dot { background: var(--orange); }
+
+  /* Slot legend */
+  .lrn-legend { display: flex; gap: 12px; flex-wrap: wrap; }
+  .lrn-legend-item { display: flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: .6rem; color: var(--muted); }
+  .lrn-legend-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  /* Workflow buttons */
+  .lrn-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn-lrn {
+    flex: 1; min-width: 90px; padding: 10px 8px;
+    border: none; border-radius: 9px;
+    font-family: var(--mono); font-size: .72rem; font-weight: 700;
+    cursor: pointer; transition: all .15s; letter-spacing: .03em;
+  }
+  .btn-lrn:disabled { opacity: .35; cursor: not-allowed; }
+  .btn-lrn.learn   { background: var(--accent-lt); color: var(--accent); border: 1.5px solid #93c5fd; }
+  .btn-lrn.replay  { background: var(--orange-lt); color: var(--orange); border: 1.5px solid #fde68a; }
+  .btn-lrn.save    { background: var(--green-lt);  color: var(--green);  border: 1.5px solid #86efac; }
+  .btn-lrn.discard { background: var(--surface2);  color: var(--muted);  border: 1.5px solid var(--border); }
+  .btn-lrn.delete  { background: var(--red-lt);    color: var(--red);    border: 1.5px solid #fca5a5; }
+  .btn-lrn.learn:not(:disabled):hover   { background: #bfdbfe; }
+  .btn-lrn.replay:not(:disabled):hover  { background: #fde68a; }
+  .btn-lrn.save:not(:disabled):hover    { background: #bbf7d0; }
+  .btn-lrn.discard:not(:disabled):hover { background: var(--border); }
+  .btn-lrn.delete:not(:disabled):hover  { background: #fecaca; }
+
+  /* Workflow status line */
+  .lrn-status-line {
+    font-family: var(--mono); font-size: .7rem;
+    padding: 8px 12px; border-radius: 8px;
+    background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+    min-height: 2.2rem; display: flex; align-items: center;
+  }
+  .lrn-status-line.capturing { background: var(--orange-lt); border-color: #fde68a; color: var(--orange); }
+  .lrn-status-line.ok        { background: var(--green-lt);  border-color: #86efac; color: var(--green); }
+  .lrn-status-line.err       { background: var(--red-lt);    border-color: #fca5a5; color: var(--red); }
+
+  /* ── DEBUG CARD ─────────────────────────────────────────── */
+  .ctrl-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .ctrl-row  { display: flex; align-items: center; gap: 10px; }
+  .ctrl-lbl  { font-family: var(--mono); font-size: .68rem; font-weight: 700; color: var(--muted); width: 72px; flex-shrink: 0; }
+  .raw-pair { display: flex; gap: 6px; flex: 1; }
+  .btn-tog {
+    flex: 1; padding: 8px;
+    border: 1.5px solid var(--border); border-radius: 8px;
+    font-family: var(--mono); font-size: .72rem; font-weight: 700;
+    background: var(--bg); color: var(--muted); cursor: pointer; transition: all .15s;
+  }
+  .btn-tog:disabled   { opacity: .35; cursor: not-allowed; }
+  .btn-tog.active-on  { border-color: var(--green); background: var(--green-lt); color: var(--green); }
+  .btn-tog.active-off { border-color: var(--red);   background: var(--red-lt);   color: var(--red);   }
+
+  /* ── WIFI CONFIG CARD ─────────────────────────────────── */
+  .wifi-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .wifi-row  { display: flex; flex-direction: column; gap: 6px; }
+  .wifi-lbl  { font-family: var(--mono); font-size: .65rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  
+  .pass-wrap { position: relative; display: flex; align-items: center; }
+  #inp-wifi-pass { width: 100%; padding: 10px 40px 10px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-family: var(--mono); font-size: .8rem; background: var(--bg); outline: none; }
+  #inp-wifi-pass:focus { border-color: var(--accent); background: #fff; }
+  .btn-eye { position: absolute; right: 10px; background: none; border: none; cursor: pointer; color: var(--muted); padding: 4px; display: flex; align-items: center; justify-content: center; }
+  .btn-eye svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+  .wifi-actions { display: flex; gap: 8px; margin-top: 4px; }
+  .btn-wifi { flex: 1; padding: 11px; border: none; border-radius: 9px; font-family: var(--mono); font-size: .75rem; font-weight: 700; cursor: pointer; transition: all .15s; }
+  .btn-wifi.rescan { background: var(--bg); color: var(--text); border: 1.5px solid var(--border); }
+  .btn-wifi.rescan:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .btn-wifi.save   { background: var(--accent); color: #fff; }
+  .btn-wifi.save:hover:not(:disabled)   { background: #003fa3; }
+  .btn-wifi:disabled { opacity: .4; cursor: not-allowed; }
+
+  #wifi-manual-wrap { display: none; margin-top: 4px; }
+  #inp-wifi-manual { width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-family: var(--mono); font-size: .8rem; background: var(--bg); outline: none; }
+  #inp-wifi-manual:focus { border-color: var(--accent); background: #fff; }
+
+  /* â”€â”€ ADMIN CARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  .admin-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .admin-note {
+    font-family: var(--mono); font-size: .68rem; line-height: 1.6; color: var(--muted);
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+  }
+  .admin-fields { display: none; flex-direction: column; gap: 14px; }
+  .admin-input {
+    width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px;
+    font-family: var(--mono); font-size: .8rem; background: var(--bg); outline: none;
+  }
+  .admin-input:focus { border-color: var(--accent); background: #fff; }
+  .btn-admin {
+    flex: 1; padding: 11px; border: none; border-radius: 9px; font-family: var(--mono);
+    font-size: .75rem; font-weight: 700; cursor: pointer; transition: all .15s;
+  }
+  .btn-admin.unlock { background: #111827; color: #fff; }
+  .btn-admin.unlock:hover:not(:disabled) { background: #030712; }
+  .btn-admin.save { background: var(--red); color: #fff; }
+  .btn-admin.save:hover:not(:disabled) { background: #b91c1c; }
+  .btn-admin:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* ── LOG ────────────────────────────────────────────────── */
+  .log-wrap { padding: 12px 16px; }
+  #log { font-family: var(--mono); font-size: .71rem; line-height: 1.75; height: 180px; overflow-y: auto; }
+  #log::-webkit-scrollbar { width: 4px; }
+  #log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .ll { display: flex; gap: 8px; }
+  .lt { color: #b0b8c8; flex-shrink: 0; }
+  .lm { word-break: break-all; }
+  .lm.rx  { color: var(--accent); }
+  .lm.tx  { color: var(--green); }
+  .lm.err { color: var(--red); }
+  .lm.sys { color: var(--muted); font-style: italic; }
+
+  /* ── SEND ROW ───────────────────────────────────────────── */
+  .send-row { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); background: var(--surface2); }
+  #inp-send { flex: 1; padding: 9px 13px; border: 1.5px solid var(--border); border-radius: 9px; font-family: var(--mono); font-size: .82rem; outline: none; background: #fff; transition: border-color .15s; }
+  #inp-send:focus    { border-color: var(--accent); }
+  #inp-send:disabled { background: var(--bg); cursor: not-allowed; }
+  #btn-send { padding: 9px 20px; background: var(--accent); color: #fff; border: none; border-radius: 9px; font-family: var(--mono); font-size: .78rem; font-weight: 700; cursor: pointer; transition: background .15s; }
+  #btn-send:hover    { background: #003fa3; }
+  #btn-send:disabled { background: #d1d5db; cursor: not-allowed; }
+
+  .footer { text-align: center; font-family: var(--mono); font-size: .6rem; color: #c0c8d4; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ──────────────────────────────────────────────── -->
+<header>
+  <div class="brand">
+    <div class="brand-icon">
+      <svg viewBox="0 0 24 24"><path d="M9 18c-1.5-1.5-2-3.5-2-6s.5-4.5 2-6"/><path d="M15 6c1.5 1.5 2 3.5 2 6s-.5 4.5-2 6"/><circle cx="12" cy="12" r="2"/><path d="M6 21c-2.5-2.5-4-6-4-9s1.5-6.5 4-9"/><path d="M18 3c2.5 2.5 4 6 4 9s-1.5 6.5-4 9"/></svg>
+    </div>
+    <div>
+      <div class="brand-name">IrTrace</div>
+      <div class="brand-sub" id="version-line">ESP32-C5 &middot; WEB -- / FW --</div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <a class="guide-link" href="manual.html" target="_blank" rel="noopener">Guide</a>
+    <button id="btn-connect" onclick="toggleConnect()">
+      <span class="ble-dot"></span>
+      <span id="btn-label">Connect</span>
+    </button>
+  </div>
+</header>
+
+<div id="status-strip">
+  <span class="sdot"></span>
+  <span id="strip-msg">Disconnected — tap Connect to scan</span>
+</div>
+
+<div class="wrap">
+
+  <!-- ── IR RECEIVED SIGNAL ──────────────────────────────── -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-label">IR Received Signal</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span id="last-ts" style="font-family:var(--mono);font-size:.6rem;color:#b8bfc9"></span>
+        <span class="pill pill-idle" id="ir-pill">Waiting</span>
+      </div>
+    </div>
+    <div class="ir-grid">
+      <div class="ir-cell full" id="cell-protocol">
+        <div class="ir-field">Protocol</div>
+        <div class="ir-val empty" id="val-protocol">—</div>
+      </div>
+      <div class="ir-cell" id="cell-power">
+        <div class="ir-field">Power</div>
+        <div class="ir-val empty" id="val-power">—</div>
+      </div>
+      <div class="ir-cell" id="cell-mode">
+        <div class="ir-field">Mode</div>
+        <div class="ir-val empty" id="val-mode">—</div>
+      </div>
+      <div class="ir-cell" id="cell-temp-rx">
+        <div class="ir-field">Temperature (RX)</div>
+        <div class="ir-val empty" id="val-temp-rx">—</div>
+      </div>
+      <div class="ir-cell" id="cell-fan">
+        <div class="ir-field">Fan Speed</div>
+        <div class="ir-val empty" id="val-fan">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── WIFI CONFIGURATION ────────────────────────────── -->
+  <div class="card" id="wifi-card">
+    <div class="card-head">
+      <span class="card-label">Wi-Fi Configuration</span>
+      <span class="pill pill-idle" id="wifi-pill">Scan Ready</span>
+    </div>
+    <div class="wifi-body">
+      <div class="wifi-row">
+        <label class="wifi-lbl">Select Network</label>
+        <select class="proto-select" id="sel-wifi" disabled onchange="onWifiSelectChange()">
+          <option value="-1">Scanning for networks...</option>
+        </select>
+        <div id="wifi-manual-wrap">
+          <input id="inp-wifi-manual" placeholder="Enter Hidden SSID..." oninput="updateSaveChecklist()">
+        </div>
+      </div>
+      <div class="wifi-row">
+        <label class="wifi-lbl">Password</label>
+        <div class="pass-wrap">
+          <input type="password" id="inp-wifi-pass" disabled placeholder="Enter password...">
+          <button class="btn-eye" onclick="togglePass('inp-wifi-pass')">
+            <svg id="eye-icon" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="wifi-actions">
+        <button class="btn-wifi rescan" id="btn-wifi-rescan" disabled onclick="requestWifiScan()">🔄 RE-SCAN</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PROTOCOL DISCOVERY ──────────────────────────────── -->
+  <div class="card" id="admin-card">
+    <div class="card-head">
+      <span class="card-label">Admin / Advanced</span>
+      <span class="pill pill-idle" id="admin-pill">Locked</span>
+    </div>
+    <div class="admin-body">
+      <div class="admin-note">
+        Unlock to edit the production-only fields used by the main firmware: device ID and wake interval.
+      </div>
+      <div class="wifi-row">
+        <label class="wifi-lbl">Admin Password</label>
+        <div class="pass-wrap">
+          <input type="password" id="inp-admin-pass" disabled placeholder="Enter current admin password...">
+          <button class="btn-eye" onclick="togglePass('inp-admin-pass')">
+            <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="wifi-actions">
+        <button class="btn-admin unlock" id="btn-admin-unlock" disabled onclick="unlockAdmin()">UNLOCK ADMIN</button>
+      </div>
+      <div class="admin-fields" id="admin-fields">
+        <div class="wifi-row">
+          <label class="wifi-lbl">Device ID (001-999)</label>
+          <input class="admin-input" id="inp-admin-uid" disabled inputmode="numeric" maxlength="3" placeholder="001">
+        </div>
+        <div class="wifi-row">
+          <label class="wifi-lbl">Wake Interval (minutes)</label>
+          <input class="admin-input" id="inp-admin-wake" disabled type="number" min="1" max="600" placeholder="10">
+        </div>
+        <div class="admin-note">
+          The device stores wake interval in seconds. This screen edits it in minutes to match the old admin flow.
+        </div>
+        <div class="wifi-actions">
+          <button class="btn-admin save" id="btn-admin-save" disabled onclick="saveAdmin()">SAVE ADMIN</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="discovery-card">
+    <div class="card-head">
+      <span class="card-label">Protocol Discovery</span>
+      <span class="pill pill-proto" id="proto-pill">—</span>
+    </div>
+    <div class="disc-body">
+
+      <!-- Shared temperature control -->
+      <div class="temp-ctrl-row">
+        <span class="temp-ctrl-lbl">Temp</span>
+        <button class="btn-adj" id="btn-tminus" onclick="adjustTemp(-1)">−</button>
+        <div class="temp-display-big" id="temp-display">24<span>°C</span></div>
+        <button class="btn-adj" id="btn-tplus"  onclick="adjustTemp(+1)">+</button>
+      </div>
+
+      <!-- Active variant indicator -->
+      <div class="active-tag" id="active-tag" style="display:none">
+        Active variant: <span id="active-name">—</span>
+      </div>
+
+      <!-- ── SECTION A: Suggested Protocols ── -->
+      <div class="section-head">
+        <span class="section-label">Suggested Protocols</span>
+        <span class="section-badge" id="candidate-count"></span>
+      </div>
+
+      <!-- No-candidate notice (hidden when candidates exist) -->
+      <div class="no-candidate" id="no-candidate" style="display:none">
+        ⚠️ No direct TX candidates for this protocol — use All Protocols below.
+      </div>
+
+      <select class="proto-select" id="sel-lookup" disabled onchange="onLookupChange()">
+        <option value="-1">— Press a remote button to populate —</option>
+      </select>
+
+      <div class="section-divider"></div>
+
+      <!-- ── SECTION B: All Protocols ── -->
+      <div class="section-head">
+        <span class="section-label">All Protocols</span>
+        <span class="section-badge">69 variants (0–68)</span>
+      </div>
+
+      <select class="proto-select" id="sel-universal" disabled onchange="onUniversalChange()">
+        <option value="-1">⚡ Local Setup — RAW Capture</option>
+        <!-- populated by buildUniversalDropdown() -->
+      </select>
+
+      <!-- ── Shared Test Buttons ────────────────────────────── -->
+      <div class="section-divider"></div>
+      <div id="proto-mode-notice" class="proto-disabled-notice" style="display:none">
+        🔒 Protocol Discovery disabled — switch to Protocol mode to use these controls
+      </div>
+      <div class="test-row">
+        <button class="btn-test off"  id="btn-test-off"  disabled onclick="testSection('off')">TEST OFF</button>
+        <button class="btn-test on"   id="btn-test-on"   disabled onclick="testSection('on')">TEST ON</button>
+        <button class="btn-test temp" id="btn-test-temp" disabled onclick="testSection('temp')">SET TEMP</button>
+      </div>
+
+      <!-- ── Find AC Receiver ─────────────────────────────── -->
+      <div class="section-divider"></div>
+      <button class="btn-find" id="btn-find-rx" disabled onclick="toggleFindRx()">
+        📡 FIND AC RECEIVER
+      </button>
+      <div class="find-hint" id="find-rx-hint" style="display:none;">
+        ● Scanning — sweep blaster slowly across AC face
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── UNSUPPORTED AC SETUP (Learn Fallback) ─────────── -->
+  <div class="card" id="learn-card">
+    <div class="card-head">
+      <span class="card-label">Unsupported AC Setup</span>
+      <span class="pill pill-idle" id="lrn-mode-pill">Protocol</span>
+    </div>
+    <div class="lrn-body">
+
+      <div class="lrn-note">
+        Use this section only when the protocol library cannot control your AC.
+        Learn each command from your original remote, then switch to Learned mode.
+        Replays always use 38 kHz — carrier is not measured by the receiver.
+      </div>
+
+      <!-- Control mode toggle -->
+      <div class="lrn-mode-row">
+        <span class="lrn-mode-lbl">Control</span>
+        <div class="lrn-mode-btns">
+          <button class="btn-lrn-mode" id="btn-mode-proto"   disabled onclick="setLearnMode('PROTOCOL')">Protocol (default)</button>
+          <button class="btn-lrn-mode" id="btn-mode-learned" disabled onclick="setLearnMode('LEARNED')">Learned Fallback</button>
+        </div>
+      </div>
+
+      <!-- Slot grid: OFF + COOL_16..COOL_30 -->
+      <div>
+        <div class="lrn-legend" style="margin-bottom:8px">
+          <div class="lrn-legend-item"><div class="lrn-legend-dot" style="background:var(--border)"></div>Empty</div>
+          <div class="lrn-legend-item"><div class="lrn-legend-dot" style="background:var(--orange)"></div>Captured (unsaved)</div>
+          <div class="lrn-legend-item"><div class="lrn-legend-dot" style="background:var(--green)"></div>Saved</div>
+        </div>
+        <div class="lrn-slot-grid" id="lrn-slot-grid">
+          <!-- populated by buildLearnSlotGrid() -->
+        </div>
+      </div>
+
+      <!-- Workflow status -->
+      <div class="lrn-status-line" id="lrn-status">Select a slot above to begin.</div>
+
+      <!-- Workflow action buttons -->
+      <div class="lrn-actions">
+        <button class="btn-lrn learn"   id="btn-lrn-learn"   disabled onclick="learnBeginUi()">📥 LEARN</button>
+        <button class="btn-lrn replay"  id="btn-lrn-replay"  disabled onclick="learnReplayUi()">▶ TEST</button>
+        <button class="btn-lrn save"    id="btn-lrn-save"    disabled onclick="learnSaveUi()">💾 SAVE</button>
+        <button class="btn-lrn discard" id="btn-lrn-discard" disabled onclick="learnDiscardUi()">✕ DISCARD</button>
+        <button class="btn-lrn delete"  id="btn-lrn-delete"  disabled onclick="learnDeleteUi()">🗑 DELETE</button>
+        <button class="btn-lrn delete"  id="btn-lrn-delete-all" disabled onclick="learnDeleteAllUi()">DELETE ALL</button>
+      </div>
+
+      <!-- ── Find AC Receiver (Learned mode) ─────────────── -->
+      <div class="section-divider"></div>
+      <button class="btn-find" id="btn-find-rx-lrn" disabled onclick="toggleFindRxLrn()">
+        📡 FIND AC RECEIVER
+      </button>
+      <div class="find-hint" id="find-rx-hint-lrn" style="display:none;">
+        ● Scanning — sweep blaster slowly across AC face
+      </div>
+      <div style="font-family:var(--mono);font-size:.62rem;color:var(--muted);text-align:center;padding:2px 0;">
+        Uses COOL 24 slot for scanning
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── DEBUG ────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-label">Debug</span>
+    </div>
+    <div class="ctrl-body">
+      <div class="ctrl-row">
+        <span class="ctrl-lbl">Raw Out</span>
+        <div class="raw-pair">
+          <button class="btn-tog" id="btn-raw-on"  disabled onclick="sendCmd('RAW=ON')">ON</button>
+          <button class="btn-tog" id="btn-raw-off" disabled onclick="sendCmd('RAW=OFF')">OFF</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MESSAGE LOG ──────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-label">Message Log</span>
+      <span onclick="clearLog()" style="font-family:var(--mono);font-size:.65rem;color:var(--muted);cursor:pointer;padding:2px 8px;border-radius:5px">Clear</span>
+    </div>
+    <div class="log-wrap">
+      <div id="log">
+        <div class="ll"><span class="lm sys">Log empty — connect to start.</span></div>
+      </div>
+    </div>
+    <div class="send-row">
+      <input id="inp-send" placeholder="Manual command (e.g. RAW=ON, RAW=OFF, status)..." disabled
+             onkeydown="if(event.key==='Enter') sendManual()">
+      <button id="btn-send" disabled onclick="sendManual()">SEND</button>
+    </div>
+  </div>
+
+  <!-- ── SAVE CONFIGURATION ─────────────────────────────── -->
+  <div class="card" id="save-card">
+    <div class="card-head">
+      <span class="card-label">Save Configuration</span>
+      <span class="pill pill-idle" id="save-pill">Pending</span>
+    </div>
+    <div class="save-body">
+      <div class="save-checklist">
+        <div class="check-item" id="chk-wifi">
+          <span class="chk-icon">○</span>
+          <span class="chk-lbl" id="chk-wifi-lbl">Wi-Fi network — not selected</span>
+        </div>
+        <div class="check-item" id="chk-proto">
+          <span class="chk-icon">○</span>
+          <span class="chk-lbl" id="chk-proto-lbl">IR protocol — not tested yet</span>
+        </div>
+      </div>
+      <button class="btn-save-all" id="btn-save-all" disabled onclick="submitAll()">
+        💾 SAVE ALL — Configure Device
+      </button>
+    </div>
+  </div>
+
+  <div class="footer">IrTrace · ESP32-C5 · RX · BLE · Chrome only</div>
+</div>
+
+<script>
+// ============================================================
+// BLE UUIDs — Nordic UART Service
+// ============================================================
+const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const TX_UUID      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+const RX_UUID      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const IRTRACE_WEB_VERSION = 'v@0.0.3';
+
+let bleDevice = null, rxChar = null, connected = false;
+let firmwareVersion = '';
+const enc = new TextEncoder(), dec = new TextDecoder();
+
+// ============================================================
+// PROTOCOL LOOKUP TABLE
+// Source: IR_Protocol_Family_Map.md + IR_TRANSMITTER.h
+// Key  : decoded protocol string (from PROTOCOL: BLE message)
+// Value: ordered candidate array [[variantId, displayName], ...]
+// ============================================================
+// IDs in this table match AC_xxx #defines in IR_TRANSMITTER.h exactly.
+// Old comments referencing "kVariantRx[]" indices have been updated —
+// those indices shifted when the 9 stub entries were removed from kVariantRx[].
+const PROTOCOL_LOOKUP = {
+  // ── Mitsubishi Electric ───────────────────────────────────
+  'MITSUBISHI_AC':       [[0,'Mitsubishi STD 144-bit'],[1,'Mitsubishi 112-bit'],[2,'Mitsubishi 136-bit']],
+  'MITSUBISHI112':       [[1,'Mitsubishi 112-bit'],[2,'Mitsubishi 136-bit'],[0,'Mitsubishi STD 144-bit']],
+  'MITSUBISHI136':       [[2,'Mitsubishi 136-bit'],[1,'Mitsubishi 112-bit'],[0,'Mitsubishi STD 144-bit']],
+  // Teknopoint + TCL share timing with Mitsubishi112 — field confirmed: v1 works on Teknopoint Allegro
+  'TEKNOPOINT':          [[41,'TCL 96-bit / GZ055BE1'],[40,'TCL 112-bit'],[1,'Mitsubishi 112-bit'],[2,'Mitsubishi 136-bit'],[0,'Mitsubishi STD 144-bit']],
+  'TCL96AC':             [[41,'TCL 96-bit / GZ055BE1'],[40,'TCL 112-bit'],[1,'Mitsubishi 112-bit'],[2,'Mitsubishi 136-bit']],
+  'TCL112AC':            [[40,'TCL 112-bit'],[41,'TCL 96-bit / GZ055BE1'],[1,'Mitsubishi 112-bit'],[2,'Mitsubishi 136-bit']],
+
+  // ── Mitsubishi Heavy Industries ───────────────────────────
+  'MITSUBISHI_HEAVY_152':[[3,'Mitsubishi Heavy 152-bit'],[4,'Mitsubishi Heavy 88-bit']],
+  'MITSUBISHI_HEAVY_88': [[4,'Mitsubishi Heavy 88-bit'],[3,'Mitsubishi Heavy 152-bit']],
+
+  // ── Daikin ───────────────────────────────────────────────
+  // TX #defines: DAIKIN_STD=5, DAIKIN2=6, DAIKIN64=7, DAIKIN128=8,
+  //              DAIKIN152=9, DAIKIN160=10, DAIKIN176=11, DAIKIN216=12
+  // DAIKIN200 / DAIKIN312 have no TX class — best-effort fallback to std Daikin
+  'DAIKIN':    [[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit'],[9,'Daikin152'],[10,'Daikin160'],[11,'Daikin176'],[12,'Daikin216']],
+  'DAIKIN2':   [[6,'Daikin2 312-bit'],[5,'Daikin STD 280-bit'],[9,'Daikin152'],[10,'Daikin160'],[11,'Daikin176'],[12,'Daikin216']],
+  'DAIKIN64':  [[7,'Daikin64 64-bit (toggle)'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
+  'DAIKIN128': [[8,'Daikin128 128-bit (toggle)'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
+  'DAIKIN152': [[9,'Daikin152 152-bit'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
+  'DAIKIN160': [[10,'Daikin160 160-bit'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
+  'DAIKIN176': [[11,'Daikin176 176-bit'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
+  'DAIKIN216': [[12,'Daikin216 216-bit'],[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit']],
+  'DAIKIN200': [[5,'Daikin STD 280-bit'],[6,'Daikin2 312-bit'],[9,'Daikin152'],[10,'Daikin160'],[11,'Daikin176'],[12,'Daikin216']],
+  'DAIKIN312': [[6,'Daikin2 312-bit'],[5,'Daikin STD 280-bit'],[9,'Daikin152'],[10,'Daikin160'],[11,'Daikin176'],[12,'Daikin216']],
+
+  // ── Fujitsu / Panasonic (cross-check — ordering matters) ─
+  // TX #defines: FUJITSU=13, PANASONIC=14, PANASONIC32=15
+  'FUJITSU_AC':    [[13,'Fujitsu 56-128-bit'],[14,'Panasonic 216-bit']],
+  'PANASONIC_AC':  [[14,'Panasonic 216-bit'],[13,'Fujitsu 56-128-bit']],
+  'PANASONIC_AC32':[[15,'Panasonic32 32-bit (toggle)'],[14,'Panasonic 216-bit'],[13,'Fujitsu 56-128-bit']],
+
+  // ── Samsung ──────────────────────────────────────────────
+  // TX #define: SAMSUNG=16
+  'SAMSUNG_AC': [[16,'Samsung 112/168-bit']],
+
+  // ── LG ───────────────────────────────────────────────────
+  // TX #defines: LG=17, LG2=68
+  'LG':  [[17,'LG Standard (GE6711AR2853M)']],
+  'LG2': [[68,'LG2 — AKB75215403']],
+
+  // ── Hitachi ──────────────────────────────────────────────
+  // TX #defines: STD=18, AC1=19, AC264=20, AC296=21, AC344=22, AC424=23
+  'HITACHI_AC':    [[18,'Hitachi STD 224-bit'],[19,'Hitachi AC1 104-bit'],[23,'Hitachi AC424'],[22,'Hitachi AC344'],[20,'Hitachi AC264'],[21,'Hitachi AC296']],
+  'HITACHI_AC1':   [[19,'Hitachi AC1 104-bit'],[18,'Hitachi STD 224-bit'],[23,'Hitachi AC424'],[22,'Hitachi AC344'],[20,'Hitachi AC264'],[21,'Hitachi AC296']],
+  'HITACHI_AC264': [[20,'Hitachi AC264 264-bit'],[23,'Hitachi AC424'],[22,'Hitachi AC344'],[21,'Hitachi AC296'],[18,'Hitachi STD 224-bit'],[19,'Hitachi AC1']],
+  'HITACHI_AC296': [[21,'Hitachi AC296 296-bit'],[23,'Hitachi AC424'],[22,'Hitachi AC344'],[20,'Hitachi AC264'],[18,'Hitachi STD 224-bit'],[19,'Hitachi AC1']],
+  'HITACHI_AC344': [[22,'Hitachi AC344 344-bit'],[23,'Hitachi AC424'],[21,'Hitachi AC296'],[20,'Hitachi AC264'],[18,'Hitachi STD 224-bit'],[19,'Hitachi AC1']],
+  'HITACHI_AC424': [[23,'Hitachi AC424 424-bit'],[22,'Hitachi AC344'],[21,'Hitachi AC296'],[20,'Hitachi AC264'],[18,'Hitachi STD 224-bit'],[19,'Hitachi AC1']],
+
+  // ── Toshiba (also covers Carrier 42NQV series) ───────────
+  // TX #define: TOSHIBA=24
+  'TOSHIBA_AC': [[24,'Toshiba 72-bit+']],
+
+  // ── Haier / Daichi / Mabe ────────────────────────────────
+  // TX #defines: Haier STD=25, YRW02=26, AC160=27, AC176=28
+  'HAIER_AC':       [[25,'Haier STD 72-bit'],[26,'Haier YRW02 112-bit'],[27,'Haier AC160'],[28,'Haier AC176']],
+  'HAIER_AC_YRW02': [[26,'Haier YRW02 112-bit'],[25,'Haier STD 72-bit'],[27,'Haier AC160'],[28,'Haier AC176']],
+  'HAIER_AC160':    [[27,'Haier AC160 160-bit'],[26,'Haier YRW02 112-bit'],[25,'Haier STD 72-bit'],[28,'Haier AC176']],
+  'HAIER_AC176':    [[28,'Haier AC176 176-bit'],[27,'Haier AC160 160-bit'],[26,'Haier YRW02 112-bit'],[25,'Haier STD 72-bit']],
+
+  // ── Kelvinator / Gree (Kelvinator FIRST — ordering rule) ─
+  // TX #defines: Kelvinator=29, Gree=30
+  'KELVINATOR': [[29,'Kelvinator 128-bit'],[30,'Gree 64-bit']],
+  'GREE':       [[29,'Kelvinator 128-bit'],[30,'Gree 64-bit']],
+
+  // ── Midea / Coolix (cross-check) ─────────────────────────
+  // TX #defines: Midea=31, Midea24=32, Coolix=33, Coolix48=34
+  'MIDEA':    [[31,'Midea 48-bit'],[32,'Midea24 24-bit'],[33,'Coolix 24-bit'],[34,'Coolix48 48-bit']],
+  'MIDEA24':  [[32,'Midea24 24-bit'],[31,'Midea 48-bit']],
+  // Bosch FIRST for Coolix — per IRrecv.cpp ordering rule; TX #define: Bosch=63
+  'COOLIX':   [[63,'Bosch144 144-bit'],[33,'Coolix 24-bit'],[34,'Coolix48 48-bit'],[31,'Midea 48-bit']],
+  'COOLIX48': [[63,'Bosch144 144-bit'],[34,'Coolix48 48-bit'],[33,'Coolix 24-bit'],[31,'Midea 48-bit']],
+
+  // ── Carrier 64-bit ───────────────────────────────────────
+  // TX #define: Carrier64=35
+  'CARRIER_AC64': [[35,'Carrier64 64-bit']],
+
+  // ── Sharp (Kelvinator cross-check) ───────────────────────
+  // TX #defines: Sharp=36, Kelvinator=29
+  'SHARP_AC': [[36,'Sharp 104-bit'],[29,'Kelvinator 128-bit']],
+
+  // ── Whirlpool ────────────────────────────────────────────
+  // TX #define: Whirlpool=37
+  'WHIRLPOOL_AC': [[37,'Whirlpool 168-bit (toggle)']],
+
+  // ── Electra / AUX ────────────────────────────────────────
+  // TX #define: Electra=38
+  'ELECTRA_AC': [[38,'Electra / AUX 104-bit']],
+
+  // ── Vestel ───────────────────────────────────────────────
+  // TX #define: Vestel=39
+  'VESTEL_AC': [[39,'Vestel 56-bit']],
+
+  // ── Teco / Alaska ────────────────────────────────────────
+  // TX #define: Teco=42
+  'TECO': [[42,'Teco 35-bit']],
+
+  // ── Goodweather ──────────────────────────────────────────
+  // TX #define: Goodweather=43
+  'GOODWEATHER': [[43,'Goodweather 48-bit']],
+
+  // ── Neoclima / Soleus Air ────────────────────────────────
+  // TX #define: Neoclima=44
+  'NEOCLIMA': [[44,'Neoclima 96-bit']],
+
+  // ── Amcor ────────────────────────────────────────────────
+  // TX #define: Amcor=45
+  'AMCOR': [[45,'Amcor 64-bit']],
+
+  // ── Airwell ──────────────────────────────────────────────
+  // TX #define: Airwell=46
+  'AIRWELL': [[46,'Airwell 34-bit (toggle)']],
+
+  // ── De'Longhi ────────────────────────────────────────────
+  // TX #defines: Delonghi=47, Electra=38
+  'DELONGHI_AC': [[47,"De'Longhi 64-bit"],[38,'Electra / AUX 104-bit']],
+
+  // ── Sanyo ────────────────────────────────────────────────
+  // TX #defines: Sanyo STD=48, Sanyo88=49. Sanyo152 has no TX class.
+  'SANYO_AC':   [[48,'Sanyo STD 72-bit'],[49,'Sanyo88 88-bit']],
+  'SANYO_AC88': [[49,'Sanyo88 88-bit'],[48,'Sanyo STD 72-bit']],
+  'SANYO_AC152':[[48,'Sanyo STD 72-bit (best-effort)'],[49,'Sanyo88 88-bit (best-effort)']],
+
+  // ── Voltas ───────────────────────────────────────────────
+  // TX #define: Voltas=50
+  'VOLTAS': [[50,'Voltas 120-bit']],
+
+  // ── Mirage ───────────────────────────────────────────────
+  // TX #define: Mirage=51
+  'MIRAGE': [[51,'Mirage 120-bit']],
+
+  // ── Corona ───────────────────────────────────────────────
+  // TX #define: Corona=52
+  'CORONA_AC': [[52,'Corona 168-bit']],
+
+  // ── Airton ───────────────────────────────────────────────
+  // TX #define: Airton=53
+  'AIRTON': [[53,'Airton 56-bit']],
+
+  // ── EcoClim ──────────────────────────────────────────────
+  // TX #define: EcoClim=54
+  'ECOCLIM': [[54,'EcoClim 56-bit']],
+
+  // ── Kelon / Hisense ──────────────────────────────────────
+  // TX #defines: Kelon=55, Kelon168=56
+  'KELON':    [[55,'Kelon 48-bit'],[56,'Kelon168 168-bit']],
+  'KELON168': [[56,'Kelon168 168-bit'],[55,'Kelon 48-bit']],
+
+  // ── Rhoss ────────────────────────────────────────────────
+  // TX #define: Rhoss=57
+  'RHOSS': [[57,'Rhoss 96-bit']],
+
+  // ── Technibel ────────────────────────────────────────────
+  // TX #define: Technibel=58
+  'TECHNIBEL_AC': [[58,'Technibel 56-bit']],
+
+  // ── Transcold ────────────────────────────────────────────
+  // TX #define: Transcold=59
+  'TRANSCOLD': [[59,'Transcold 136-bit']],
+
+  // ── Trotec / Duux (split brand — Midea fallback) ─────────
+  // TX #defines: Trotec STD=60, Trotec3550=61, Midea=31
+  'TROTEC':      [[60,'Trotec STD 56-bit'],[61,'Trotec3550 120-bit'],[31,'Midea 48-bit']],
+  'TROTEC_3550': [[61,'Trotec3550 120-bit'],[60,'Trotec STD 56-bit'],[31,'Midea 48-bit']],
+
+  // ── Truma ────────────────────────────────────────────────
+  // TX #define: Truma=62
+  'TRUMA': [[62,'Truma (variable)']],
+
+  // ── Bosch / Durastar ─────────────────────────────────────
+  // TX #define: Bosch144=63
+  'BOSCH144': [[63,'Bosch144 144-bit']],
+
+  // ── Argo ─────────────────────────────────────────────────
+  // TX #defines: Argo WREM2=64, Argo WREM3=65
+  'ARGO':      [[64,'Argo WREM2 96-bit'],[65,'Argo WREM3 (variable)']],
+  'ARGO_WREM3':[[65,'Argo WREM3 (variable)'],[64,'Argo WREM2 96-bit']],
+
+  // ── Eurom ────────────────────────────────────────────────
+  // TX #define: Eurom=66
+  'EUROM': [[66,'Eurom 96-bit']],
+
+  // ── York ─────────────────────────────────────────────────
+  // TX #define: York=67
+  'YORK': [[67,'York 88-bit']],
+
+  // ── BlueStar Heavy — decoder only, no TX class ───────────
+  'BLUESTARHEAVY': [],  // no candidates → notice shown, use All Protocols
+};
+
+// ============================================================
+// TX VARIANTS — universal dropdown
+// IDs match kVariantRx[] indices in IR_RECEIVER.h exactly.
+// RAW stubs and entries without IRac class are intentionally
+// IDs match AC_xxx #defines in IR_TRANSMITTER.h exactly (sequential, no gaps).
+// Stubs (Daikin200, Daikin312, HitachiAC2/3, Carrier32/40/84/128, Sanyo152)
+// have been removed — they had no TX class and caused an index offset that
+// made every protocol from Daikin216 onwards fire the wrong IR command.
+// ============================================================
+const ALL_VARIANTS = [
+  { id:  0, name: 'Mitsubishi STD 144-bit'        },
+  { id:  1, name: 'Mitsubishi 112-bit'             },
+  { id:  2, name: 'Mitsubishi 136-bit'             },
+  { id:  3, name: 'Mitsubishi Heavy 152-bit'       },
+  { id:  4, name: 'Mitsubishi Heavy 88-bit'        },
+  { id:  5, name: 'Daikin STD 280-bit'             },
+  { id:  6, name: 'Daikin2 312-bit'                },
+  { id:  7, name: 'Daikin64 64-bit (toggle)'       },
+  { id:  8, name: 'Daikin128 128-bit (toggle)'     },
+  { id:  9, name: 'Daikin152 152-bit'              },
+  { id: 10, name: 'Daikin160 160-bit'              },
+  { id: 11, name: 'Daikin176 176-bit'              },
+  { id: 12, name: 'Daikin216 216-bit'              },
+  { id: 13, name: 'Fujitsu 56-128-bit'             },
+  { id: 14, name: 'Panasonic 216-bit'              },
+  { id: 15, name: 'Panasonic32 32-bit (toggle)'    },
+  { id: 16, name: 'Samsung 112/168-bit'            },
+  { id: 17, name: 'LG Standard — GE6711AR2853M'   },
+  { id: 18, name: 'Hitachi STD 224-bit'            },
+  { id: 19, name: 'Hitachi AC1 104-bit'            },
+  { id: 20, name: 'Hitachi AC264 264-bit'          },
+  { id: 21, name: 'Hitachi AC296 296-bit'          },
+  { id: 22, name: 'Hitachi AC344 344-bit'          },
+  { id: 23, name: 'Hitachi AC424 424-bit'          },
+  { id: 24, name: 'Toshiba 72-bit+'               },
+  { id: 25, name: 'Haier STD 72-bit'              },
+  { id: 26, name: 'Haier YRW02 112-bit'           },
+  { id: 27, name: 'Haier AC160 160-bit'           },
+  { id: 28, name: 'Haier AC176 176-bit'           },
+  { id: 29, name: 'Kelvinator 128-bit'            },
+  { id: 30, name: 'Gree 64-bit'                   },
+  { id: 31, name: 'Midea 48-bit'                  },
+  { id: 32, name: 'Midea24 24-bit'                },
+  { id: 33, name: 'Coolix 24-bit'                 },
+  { id: 34, name: 'Coolix48 48-bit'               },
+  { id: 35, name: 'Carrier64 64-bit'              },
+  { id: 36, name: 'Sharp 104-bit'                 },
+  { id: 37, name: 'Whirlpool 168-bit (toggle)'    },
+  { id: 38, name: 'Electra / AUX 104-bit'         },
+  { id: 39, name: 'Vestel 56-bit'                 },
+  { id: 40, name: 'TCL 112-bit (TAC09CHSD)'       },
+  { id: 41, name: 'TCL 96-bit (GZ055BE1)'         },
+  { id: 42, name: 'Teco 35-bit'                   },
+  { id: 43, name: 'Goodweather 48-bit'            },
+  { id: 44, name: 'Neoclima 96-bit'               },
+  { id: 45, name: 'Amcor 64-bit'                  },
+  { id: 46, name: 'Airwell 34-bit (toggle)'       },
+  { id: 47, name: "De'Longhi 64-bit"              },
+  { id: 48, name: 'Sanyo STD 72-bit'              },
+  { id: 49, name: 'Sanyo88 88-bit'                },
+  { id: 50, name: 'Voltas 120-bit'                },
+  { id: 51, name: 'Mirage 120-bit'                },
+  { id: 52, name: 'Corona 168-bit'                },
+  { id: 53, name: 'Airton 56-bit'                 },
+  { id: 54, name: 'EcoClim 56-bit'                },
+  { id: 55, name: 'Kelon 48-bit'                  },
+  { id: 56, name: 'Kelon168 168-bit'              },
+  { id: 57, name: 'Rhoss 96-bit'                  },
+  { id: 58, name: 'Technibel 56-bit'              },
+  { id: 59, name: 'Transcold 136-bit'             },
+  { id: 60, name: 'Trotec STD 56-bit'             },
+  { id: 61, name: 'Trotec3550 120-bit'            },
+  { id: 62, name: 'Truma (variable)'              },
+  { id: 63, name: 'Bosch144 144-bit'              },
+  { id: 64, name: 'Argo WREM2 96-bit'             },
+  { id: 65, name: 'Argo WREM3 (variable)'         },
+  { id: 66, name: 'Eurom 96-bit'                  },
+  { id: 67, name: 'York 88-bit'                   },
+  { id: 68, name: 'LG2 — AKB75215403'             },
+];
+
+// ============================================================
+// State
+// ============================================================
+let testTemp       = 24;
+let activeVariantId   = null;  // last variant confirmed by TX:OK
+let activeVariantName = '';
+let pendingTestVariant = null;
+let saveTxn = null;
+let wifiList = [];
+let adminUnlocked = false;
+let findRxActive  = false;     // find-receiver mode state
+let wifiReady     = false;     // checklist: WiFi SSID is selected
+let protoReady    = false;     // checklist: protocol has been tested
+let activeTestSection = 'universal'; // 'lookup' | 'universal' — last-touched dropdown
+
+// ============================================================
+// BLE — Connect / Disconnect
+// ============================================================
+async function toggleConnect() { connected ? disconnect() : await connect(); }
+
+async function connect() {
+  setStrip('warn', 'Scanning for IrTrace-BLE...');
+  try {
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SERVICE_UUID] }]
+    });
+    bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+    setStrip('warn', 'Connecting...');
+    const server  = await bleDevice.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    const txChar  = await service.getCharacteristic(TX_UUID);
+    await txChar.startNotifications();
+    txChar.addEventListener('characteristicvaluechanged', onNotify);
+    rxChar = await service.getCharacteristic(RX_UUID);
+    onConnected();
+  } catch (err) {
+    if (err.name === 'NotFoundError') setStrip('', 'Scan cancelled.');
+    else { setStrip('err', 'Failed: ' + err.message); addLog('err', err.message); }
+  }
+}
+
+function disconnect() {
+  if (bleDevice && bleDevice.gatt.connected) bleDevice.gatt.disconnect();
+}
+
+async function onConnected() {
+  connected = true;
+  firmwareVersion = '';
+  resetConfirmedProtocol();
+  resetWifiUi('Waiting for device scan...');
+  updateVersionLine();
+  document.getElementById('btn-connect').classList.add('conn');
+  document.getElementById('btn-label').textContent = 'Disconnect';
+  setStrip('ok', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
+  setControls(true);
+  resetAdminUi();
+  setFindRxState(false);   // reset find mode UI on every connect
+  updateSaveChecklist();   // reset checklist state
+  document.getElementById('discovery-card').style.display = 'block';
+  setPill('ir-pill', 'pill pill-live', 'Live');
+  addLog('sys', 'Connected to ' + (bleDevice ? bleDevice.name : 'IrTrace-BLE'));
+  // Pull all device state explicitly now that CCCD is enabled and the listener
+  // is registered.  The firmware calls bleSendStatus() + learnSendAllStatus() in
+  // its onConnect() callback, but those notifications fire before JS has enabled
+  // CCCD — NimBLE drops them silently.  Requesting here guarantees delivery.
+  //
+  // Order matters:
+  //   1. wget       — WiFi list (resetWifiUi() already cleared stale data above)
+  //   2. status     — FW version, variant, power state, raw mode
+  //   3. LRN:STATUS — all 16 slot states + ctrl mode (fixes DELETE disabled bug)
+  await sendCmd("wget");
+  await sendCmd("status");
+  await sendCmd("LRN:STATUS");
+}
+
+function onDisconnected() {
+  connected = false; rxChar = null;
+  failSaveTransaction('Disconnected');
+  pendingTestVariant = null;
+  resetConfirmedProtocol();
+  resetWifiUi('Scan Ready');
+  resetLearnUi();   // clears learnActiveSlot, learnSlotStates[], ctrl mode display —
+                    // must be called here; onConnected() re-fetches fresh state via LRN:STATUS
+  firmwareVersion = '';
+  updateVersionLine();
+  document.getElementById('btn-connect').classList.remove('conn');
+  document.getElementById('btn-label').textContent = 'Connect';
+  setStrip('', 'Disconnected — tap Connect to reconnect');
+  setControls(false);
+  resetAdminUi();
+  setFindRxState(false);   // reset find mode UI on disconnect
+  updateSaveChecklist();   // reflect disconnected state (sets disabled, not text/class)
+  // Reset save button text and state — updateSaveChecklist() only touches .disabled,
+  // so the success/saving classes and text must be cleared explicitly here.
+  const saveBtn = document.getElementById('btn-save-all');
+  if (saveBtn) {
+    saveBtn.classList.remove('saving', 'success');
+    saveBtn.textContent = '💾 SAVE ALL — Configure Device';
+  }
+  setPill('ir-pill', 'pill pill-idle', 'Waiting');
+  setPill('wifi-pill', 'pill pill-idle', 'Scan Ready');
+  addLog('sys', 'Disconnected');
+}
+
+// ============================================================
+// BLE — Incoming notifications from ESP32
+// ============================================================
+function onNotify(event) {
+  const raw = dec.decode(event.target.value).trim();
+  if (!raw) return;
+  addLog('rx', raw);
+
+  const ci = raw.indexOf(':');
+  if (ci === -1) return;
+  const key = raw.substring(0, ci).toUpperCase();
+  const val = raw.substring(ci + 1).trim();
+  noteSaveAck(key, val);
+
+  switch (key) {
+    case 'FW':
+      firmwareVersion = val;
+      updateVersionLine();
+      break;
+    case 'VAR':
+      syncFirmwareVariant(val);
+      break;
+    case 'PWR':
+      addLog('sys', 'TX power state: ' + val);
+      break;
+    case 'TEMP':
+      syncTxTemp(val);
+      break;
+    case 'RPT':
+      addLog('sys', 'TX repeat: ' + val);
+      break;
+    case 'TX':
+      if (val === 'OK') confirmPendingProtocolTest();
+      break;
+    case 'PROTOCOL': onProtocolReceived(val);    break;
+    case 'POWER':    updateIR('power',    val);  break;
+    case 'MODE':     updateIR('mode',     val);  break;
+    case 'TEMP_RX':  updateIR('temp-rx',  val);  break;
+    case 'FAN':      updateIR('fan',      val);  break;
+    case 'RAW':
+      document.getElementById('btn-raw-on').classList.toggle('active-on',  val === 'ON');
+      document.getElementById('btn-raw-off').classList.toggle('active-off', val === 'OFF');
+      break;
+    case 'NET':      onWifiNetworkReceived(val); break;
+    case 'WIFI':
+      if (val === 'OK') addLog('sys', '✅ Wi-Fi credentials saved on device');
+      break;
+    case 'SAVE':
+      if (val === 'OK') addLog('sys', 'âœ… Protocol variant saved on device');
+      break;
+    case 'ADMIN':
+      handleAdminReply(val);
+      break;
+    case 'ADM_UID':
+      setAdminUnlocked(true);
+      document.getElementById('inp-admin-uid').value = padUid(val);
+      break;
+    case 'ADM_WAKE': {
+      setAdminUnlocked(true);
+      const wakeSec = parseInt(val, 10);
+      if (Number.isFinite(wakeSec) && wakeSec > 0) {
+        document.getElementById('inp-admin-wake').value = Math.max(1, Math.round(wakeSec / 60));
+      }
+      break;
+    }
+    case 'FIND_RX':
+      if (val === 'ON')    { setFindRxState(true);  break; }
+      if (val === 'OFF')   { setFindRxState(false); break; }
+      if (val === 'PULSE') { flashFindPulse();       break; }
+      break;
+    case 'ERR':
+      pendingTestVariant = null;
+      addLog('err', val);
+      break;
+    case 'LRN':
+      handleLearnMsg(val);
+      break;
+  }
+}
+
+// ============================================================
+// Wi-Fi Scanning Logic
+// ============================================================
+function onWifiNetworkReceived(val) {
+  if (val === 'NONE') {
+    wifiList = [];
+    updateWifiDropdown();
+    // NET:NONE means scan finished with 0 results — clear the "Scanning..." pill.
+    // NET:DONE is NOT sent when count=0, so this is the only place to clear it.
+    setPill('wifi-pill', 'pill pill-idle', 'No Networks');
+    return;
+  }
+  if (val === 'DONE') {
+    updateWifiDropdown();
+    setPill('wifi-pill', 'pill pill-live', 'Scan Done');
+    return;
+  }
+
+  // Format: NET:<index>:<ssid>:<rssi>:<security>
+  // RSSI is always a negative integer; Security is always "Open" or "Secured".
+  // Neither can contain ':'. SSID can (e.g. "My:Network").
+  // Parse from the RIGHT so SSIDs with colons are handled correctly:
+  //   parts[0]              = index
+  //   parts[last]           = security
+  //   parts[last-1]         = rssi
+  //   parts[1 .. last-2]    = ssid (rejoined with ':')
+  const parts = val.split(':');
+  if (parts.length < 4) return;  // need at least index + ssid-char + rssi + security
+
+  const index = parseInt(parts[0]);
+  if (index === 0) wifiList = []; // Reset list when first network of a new scan arrives
+
+  const sec  = parts[parts.length - 1];
+  const rssi = parts[parts.length - 2];
+  const ssid = parts.slice(1, parts.length - 2).join(':');
+
+  // Deduplicate by SSID — device list is already sorted strongest-first,
+  // so the first occurrence of each SSID is the best signal. Skip duplicates.
+  if (!wifiList.find(n => n.ssid === ssid)) {
+    wifiList.push({ ssid, rssi, sec });
+  }
+}
+
+function resetWifiUi(pillText) {
+  wifiList = [];
+  wifiReady = false;
+  const sel = document.getElementById('sel-wifi');
+  if (sel) {
+    sel.innerHTML = '<option value="-1">Waiting for networks...</option>';
+  }
+  const manualEl = document.getElementById('inp-wifi-manual');
+  if (manualEl) manualEl.value = '';
+  const manualWrap = document.getElementById('wifi-manual-wrap');
+  if (manualWrap) manualWrap.style.display = 'none';
+  setPill('wifi-pill', 'pill pill-idle', pillText || 'Scan Ready');
+  updateSaveChecklist();
+}
+
+function updateWifiDropdown() {
+  const sel = document.getElementById('sel-wifi');
+  sel.innerHTML = '';
+  
+  if (wifiList.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = "-1";
+    opt.textContent = "No networks found";
+    sel.appendChild(opt);
+  } else {
+    wifiList.forEach((net, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = `${net.ssid} (${net.rssi}dBm) [${net.sec}]`;
+      sel.appendChild(opt);
+    });
+  }
+
+  const manualOpt = document.createElement('option');
+  manualOpt.value = "manual";
+  manualOpt.textContent = "➕ Manual Entry...";
+  sel.appendChild(manualOpt);
+  
+  onWifiSelectChange();
+}
+
+function onWifiSelectChange() {
+  const sel = document.getElementById('sel-wifi');
+  const manualWrap = document.getElementById('wifi-manual-wrap');
+  manualWrap.style.display = (sel.value === 'manual') ? 'block' : 'none';
+  updateSaveChecklist();
+}
+
+function togglePass(id) {
+  const el = document.getElementById(id);
+  el.type = (el.type === 'password') ? 'text' : 'password';
+}
+
+function padUid(raw) {
+  const digits = String(raw).replace(/\D/g, '');
+  let num = parseInt(digits || '1', 10);
+  if (num < 1) num = 1;
+  if (num > 999) num = 999;
+  return String(num).padStart(3, '0');
+}
+
+function syncAdminControls() {
+  const base = connected;
+  const edit = connected && adminUnlocked;
+  ['inp-admin-pass', 'btn-admin-unlock'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !base;
+  });
+  ['inp-admin-uid', 'inp-admin-wake', 'btn-admin-save'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !edit;
+  });
+}
+
+function setAdminUnlocked(on) {
+  adminUnlocked = on;
+  document.getElementById('admin-fields').style.display = on ? 'flex' : 'none';
+  setPill('admin-pill', on ? 'pill pill-live' : 'pill pill-idle', on ? 'Unlocked' : 'Locked');
+  syncAdminControls();
+}
+
+function resetAdminUi() {
+  document.getElementById('inp-admin-pass').value = '';
+  document.getElementById('inp-admin-uid').value = '';
+  document.getElementById('inp-admin-wake').value = '';
+  setAdminUnlocked(false);
+}
+
+function handleAdminReply(val) {
+  if (val === 'AUTH_OK') {
+    setAdminUnlocked(true);
+    addLog('sys', 'Admin section unlocked');
+    sendCmd('ADMIN_GET');
+    return;
+  }
+  if (val === 'AUTH_FAIL') {
+    setAdminUnlocked(false);
+    addLog('err', 'Admin password rejected');
+    return;
+  }
+  if (val === 'LOCKED') {
+    setAdminUnlocked(false);
+    addLog('err', 'Admin section is locked');
+    return;
+  }
+  if (val === 'SAVED') {
+    addLog('sys', 'âœ… Admin settings saved on device');
+  }
+}
+
+async function unlockAdmin() {
+  const pass = document.getElementById('inp-admin-pass').value.trim();
+  if (!pass) {
+    alert('Enter the admin password first');
+    return;
+  }
+  await sendCmd(`ADMIN_AUTH:${pass}`);
+}
+
+async function saveAdmin() {
+  if (!adminUnlocked) {
+    addLog('err', 'Admin section is locked');
+    return;
+  }
+
+  const uid = padUid(document.getElementById('inp-admin-uid').value.trim());
+  let wakeMin = parseInt(document.getElementById('inp-admin-wake').value, 10);
+  if (!Number.isFinite(wakeMin) || wakeMin < 1) wakeMin = 1;
+  if (wakeMin > 600) wakeMin = 600;
+
+  document.getElementById('inp-admin-uid').value = uid;
+  document.getElementById('inp-admin-wake').value = wakeMin;
+
+  addLog('sys', 'Saving admin settings...');
+  await sendCmd(`ADMIN_SAVE:${uid}\n${wakeMin * 60}`);
+}
+
+async function requestWifiScan() {
+  setPill('wifi-pill', 'pill pill-live', 'Scanning...');
+  await sendCmd('wscan');
+}
+
+// ============================================================
+// Save checklist — updates dynamically as user fills in details
+// ============================================================
+function updateSaveChecklist() {
+  // ── Determine WiFi readiness ──────────────────────────────
+  const sel      = document.getElementById('sel-wifi');
+  const manualEl = document.getElementById('inp-wifi-manual');
+  let ssid = '';
+  if (sel && sel.value === 'manual') {
+    ssid = (manualEl ? manualEl.value.trim() : '');
+  } else if (sel && parseInt(sel.value) >= 0 && wifiList.length > 0) {
+    ssid = (wifiList[parseInt(sel.value)] || {}).ssid || '';
+  }
+  wifiReady  = ssid.length > 0;
+  const learnedReady = learnCtrlMode === 'LEARNED' &&
+                       learnSlotStates.every(state => state === 'SAVED');
+  protoReady = (learnCtrlMode === 'LEARNED') ? learnedReady : activeVariantId !== null;
+
+  // ── Update WiFi check item ────────────────────────────────
+  const chkWifi    = document.getElementById('chk-wifi');
+  const chkWifiLbl = document.getElementById('chk-wifi-lbl');
+  if (chkWifi) {
+    chkWifi.classList.toggle('ready', wifiReady);
+    if (!wifiReady) chkWifi.classList.remove('missing');
+    chkWifi.querySelector('.chk-icon').textContent = wifiReady ? '✅' : '○';
+    if (chkWifiLbl) chkWifiLbl.textContent = wifiReady
+      ? 'Wi-Fi: ' + ssid
+      : 'Wi-Fi network — not selected';
+  }
+
+  // ── Update Protocol check item ────────────────────────────
+  const chkProto    = document.getElementById('chk-proto');
+  const chkProtoLbl = document.getElementById('chk-proto-lbl');
+  if (chkProto) {
+    chkProto.classList.toggle('ready', protoReady);
+    if (!protoReady) chkProto.classList.remove('missing');
+    chkProto.querySelector('.chk-icon').textContent = protoReady ? '✅' : '○';
+    if (chkProtoLbl) {
+      if (learnCtrlMode === 'LEARNED') {
+        const savedCount = learnSlotStates.filter(state => state === 'SAVED').length;
+        chkProtoLbl.textContent = learnedReady
+          ? 'IR: Learned Fallback (' + savedCount + '/' + LEARN_NUM_SLOTS + ' slots saved)'
+          : 'IR learned slots — ' + savedCount + '/' + LEARN_NUM_SLOTS + ' saved';
+      } else {
+        chkProtoLbl.textContent = protoReady
+          ? 'Protocol: ' + activeVariantName
+          : 'IR protocol — not tested yet';
+      }
+    }
+  }
+
+  // ── Save pill ─────────────────────────────────────────────
+  const allReady = wifiReady && protoReady;
+  setPill('save-pill',
+    allReady ? 'pill pill-live' : 'pill pill-idle',
+    allReady ? 'Ready' : 'Pending');
+  const saveBtn = document.getElementById('btn-save-all');
+  if (saveBtn && !saveBtn.classList.contains('saving')) {
+    saveBtn.disabled = !connected || !allReady;
+  }
+}
+
+// ============================================================
+// submitAll — single submit for WiFi + Protocol
+// ============================================================
+async function submitAll() {
+  if (!connected) return;
+
+  // ── Validation ────────────────────────────────────────────
+  let hasError = false;
+
+  if (!wifiReady) {
+    const el = document.getElementById('chk-wifi');
+    if (el) {
+      el.classList.remove('missing'); void el.offsetWidth;  // re-trigger animation
+      el.classList.add('missing');
+      el.querySelector('.chk-icon').textContent = '❌';
+    }
+    hasError = true;
+  }
+
+  if (!protoReady) {
+    const el = document.getElementById('chk-proto');
+    if (el) {
+      el.classList.remove('missing'); void el.offsetWidth;
+      el.classList.add('missing');
+      el.querySelector('.chk-icon').textContent = '❌';
+    }
+    hasError = true;
+  }
+
+  if (hasError) {
+    addLog('err', 'Fill in all required fields before saving');
+    return;
+  }
+
+  // ── Collect values ────────────────────────────────────────
+  const sel = document.getElementById('sel-wifi');
+  let ssid = '';
+  if (sel.value === 'manual') {
+    ssid = document.getElementById('inp-wifi-manual').value.trim();
+  } else {
+    ssid = wifiList[parseInt(sel.value)].ssid;
+  }
+  const pass = document.getElementById('inp-wifi-pass').value;
+
+  // ── Submit UI ─────────────────────────────────────────────
+  const btn = document.getElementById('btn-save-all');
+  if (btn) { btn.disabled = true; btn.classList.add('saving'); btn.textContent = '⏳ Saving...'; }
+
+  // ── Send commands in sequence ─────────────────────────────
+  const saveMode = learnCtrlMode;
+  const savePromise = beginSaveTransaction(saveMode);
+  try {
+    addLog('sys', 'Saving Wi-Fi credentials...');
+    if (!(await sendCmd(`WIFI_SET:${ssid}\n${pass}`))) throw new Error('Wi-Fi command send failed');
+
+    if (saveMode === 'LEARNED') {
+      addLog('sys', 'Using learned fallback slots for IR control...');
+      if (!(await sendCmd('LRN:MODE:LEARNED'))) throw new Error('Learned mode command send failed');
+    } else {
+      addLog('sys', 'Saving protocol control mode and IR variant...');
+      if (!(await sendCmd('LRN:MODE:PROTOCOL'))) throw new Error('Protocol mode command send failed');
+      if (!(await sendCmd('save'))) throw new Error('Variant save command send failed');
+    }
+
+    await savePromise;
+    addLog('sys', saveMode === 'LEARNED'
+      ? '✅ Device configured — WiFi + Learned Fallback ready'
+      : '✅ Device configured — WiFi + Protocol saved');
+    setPill('save-pill', 'pill pill-live', 'Saved ✅');
+    if (btn) {
+      btn.classList.remove('saving');
+      btn.classList.add('success');
+      btn.textContent = '✅ Saved! Restarting device...';
+    }
+    addLog('sys', 'Sending restart command — device will reboot and begin normal operation.');
+    setTimeout(async () => {
+      await sendCmd('restart');
+      // Device restarts; BLE disconnects automatically — no further UI reset needed
+    }, 1500);
+  } catch (err) {
+    failSaveTransaction(err.message || String(err));
+    try { await savePromise; } catch (_) {}
+    addLog('err', 'Save failed: ' + (err.message || err));
+    setPill('save-pill', 'pill pill-idle', 'Pending');
+    if (btn) {
+      btn.classList.remove('saving');
+      btn.textContent = '💾 SAVE ALL — Configure Device';
+      updateSaveChecklist();
+    }
+  }
+}
+
+// ============================================================
+// Protocol received → populate discovery card
+// ============================================================
+function onProtocolReceived(rawVal) {
+  // Strip repeat suffix e.g. "MITSUBISHI112 (Repeat)" → "MITSUBISHI112"
+  const proto = rawVal.replace(/\s*\(.*\)/, '').trim().toUpperCase();
+
+  // Update IR grid
+  updateIR('protocol', rawVal);
+
+  // Update discovery card pill
+  document.getElementById('proto-pill').textContent = proto;
+
+  // Populate lookup dropdown from family map
+  populateLookupDropdown(proto);
+
+  // Show the discovery card
+  document.getElementById('discovery-card').style.display = 'block';
+}
+
+// ============================================================
+// Populate lookup dropdown for a given decoded protocol
+// ============================================================
+function populateLookupDropdown(proto) {
+  const sel       = document.getElementById('sel-lookup');
+  const notice    = document.getElementById('no-candidate');
+  const countBadge= document.getElementById('candidate-count');
+  const candidates = PROTOCOL_LOOKUP[proto];
+
+  sel.innerHTML = '';
+
+  if (!candidates) {
+    // Protocol not in lookup table at all
+    notice.style.display = 'block';
+    notice.textContent   = '⚠️ "' + proto + '" not in lookup table — use All Protocols below.';
+    countBadge.textContent = '0 candidates';
+    const opt = document.createElement('option');
+    opt.value = -1;
+    opt.textContent = '— No candidates —';
+    sel.appendChild(opt);
+    // No valid candidate — if lookup was active section, test buttons must reflect this
+    if (activeTestSection === 'lookup') updateTestButtons();
+    return;
+  }
+
+  if (candidates.length === 0) {
+    // Known protocol but no TX class (e.g. BLUESTARHEAVY)
+    notice.style.display = 'block';
+    notice.textContent   = '⚠️ No TX class for ' + proto + ' — use All Protocols below.';
+    countBadge.textContent = '0 candidates';
+    const opt = document.createElement('option');
+    opt.value = -1;
+    opt.textContent = '— No TX candidates —';
+    sel.appendChild(opt);
+    if (activeTestSection === 'lookup') updateTestButtons();
+    return;
+  }
+
+  // Valid candidates — auto-switch activeTestSection to lookup so test buttons use it
+  notice.style.display = 'none';
+  countBadge.textContent = candidates.length + ' candidate' + (candidates.length > 1 ? 's' : '');
+
+  candidates.forEach(([id, name], i) => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = (i === 0 ? '⭐ ' : (i + 1) + '. ') + name;
+    sel.appendChild(opt);
+  });
+
+  activeTestSection = 'lookup';
+  updateTestButtons();
+}
+
+// ============================================================
+// Dropdown change handlers
+// ============================================================
+function onLookupChange() {
+  activeTestSection = 'lookup';
+  updateTestButtons();
+}
+
+function onUniversalChange() {
+  activeTestSection = 'universal';
+  updateTestButtons();
+}
+
+// updateTestButtons — single source of truth for shared test button enable state.
+// Disabled when: disconnected, learned mode active, or lookup selected with no valid candidate.
+function updateTestButtons() {
+  const isLearned = learnCtrlMode === 'LEARNED';
+  let enabled = false;
+  if (connected && !isLearned) {
+    if (activeTestSection === 'lookup') {
+      const id = parseInt(document.getElementById('sel-lookup').value);
+      enabled = id >= 0;
+    } else {
+      enabled = true; // universal always has a selectable entry when connected
+    }
+  }
+  ['btn-test-off', 'btn-test-on', 'btn-test-temp'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !enabled;
+  });
+}
+
+// ============================================================
+// Test button handler — shared single set of 3 buttons
+// action : 'off' | 'on' | 'temp'
+// ============================================================
+async function testSection(action) {
+  const selId = activeTestSection === 'lookup' ? 'sel-lookup' : 'sel-universal';
+  const varId = parseInt(document.getElementById(selId).value);
+
+  // RAW capture placeholder
+  if (varId === -1) {
+    addLog('sys', 'RAW capture — coming in next firmware update');
+    return;
+  }
+
+  // Find display name
+  let name = 'Variant ' + varId;
+  if (activeTestSection === 'lookup') {
+    const opt = document.getElementById('sel-lookup').selectedOptions[0];
+    if (opt) name = opt.textContent.replace(/^[⭐\d]+\.\s*/, '').trim();
+  } else {
+    const v = ALL_VARIANTS.find(v => v.id === varId);
+    if (v) name = v.name;
+  }
+
+  // Build command string
+  let cmd;
+  if      (action === 'off')  cmd = 'off';
+  else if (action === 'on')   cmd = 'on ' + testTemp;
+  else                        cmd = 't '  + testTemp;
+
+  // Send variant select, then the command; TX:OK confirms the test.
+  if (!(await sendCmd('v ' + varId))) return;
+  pendingTestVariant = { id: varId, name };
+  if (!(await sendCmd(cmd))) {
+    pendingTestVariant = null;
+    return;
+  }
+  addLog('sys', 'Testing: ' + name + ' — ' + cmd);
+}
+
+// ============================================================
+// Find AC Receiver — toggle find mode on/off
+// Protocol mode: syncs active dropdown variant before starting.
+// ============================================================
+async function toggleFindRx() {
+  if (!connected) return;
+  if (findRxActive) {
+    await sendCmd('FIND_RX:OFF');
+  } else {
+    // Sync currently selected variant to firmware before starting
+    const selId = activeTestSection === 'lookup' ? 'sel-lookup' : 'sel-universal';
+    const varId = parseInt(document.getElementById(selId).value);
+    if (varId >= 0) await sendCmd('v ' + varId);
+    await sendCmd('FIND_RX:ON');
+  }
+}
+
+// Learned mode Find RX — no variant sync needed (firmware uses COOL_24 slot directly)
+async function toggleFindRxLrn() {
+  if (!connected) return;
+  if (findRxActive) {
+    await sendCmd('FIND_RX:OFF');
+  } else {
+    await sendCmd('FIND_RX:ON');
+  }
+}
+
+function setFindRxState(on) {
+  findRxActive = on;
+  // Protocol card find RX button
+  const btn  = document.getElementById('btn-find-rx');
+  const hint = document.getElementById('find-rx-hint');
+  if (btn) {
+    if (on) { btn.classList.add('scanning');    btn.textContent = '⏹ STOP FIND RX'; }
+    else    { btn.classList.remove('scanning'); btn.textContent = '📡 FIND AC RECEIVER'; }
+  }
+  if (hint) hint.style.display = on ? 'block' : 'none';
+  // Learn card find RX button
+  const btnLrn  = document.getElementById('btn-find-rx-lrn');
+  const hintLrn = document.getElementById('find-rx-hint-lrn');
+  if (btnLrn) {
+    if (on) { btnLrn.classList.add('scanning');    btnLrn.textContent = '⏹ STOP FIND RX'; }
+    else    { btnLrn.classList.remove('scanning'); btnLrn.textContent = '📡 FIND AC RECEIVER'; }
+  }
+  if (hintLrn) hintLrn.style.display = on ? 'block' : 'none';
+}
+
+function flashFindPulse() {
+  [document.getElementById('find-rx-hint'),
+   document.getElementById('find-rx-hint-lrn')].forEach(hint => {
+    if (!hint || !findRxActive) return;
+    hint.style.opacity = '0.3';
+    setTimeout(() => { if (findRxActive) hint.style.opacity = '1'; }, 200);
+  });
+}
+
+// ============================================================
+// Temperature control (shared between both sections)
+// ============================================================
+function adjustTemp(delta) {
+  testTemp = Math.max(16, Math.min(30, testTemp + delta));
+  document.getElementById('temp-display').innerHTML = testTemp + '<span>°C</span>';
+}
+
+// ============================================================
+// IR RX field update
+// ============================================================
+function updateIR(field, val) {
+  const el   = document.getElementById('val-' + field);
+  const cell = document.getElementById('cell-' + field);
+  if (!el) return;
+  const na = (!val || val === 'N/A' || val === 'n/a');
+  el.textContent = na ? 'N/A' : val;
+  el.className   = 'ir-val' + (na ? ' na' : '');
+  if (!na) {
+    if (field === 'protocol') {
+      el.classList.add('proto');
+      document.getElementById('last-ts').textContent =
+        'Last: ' + new Date().toLocaleTimeString('en-GB', { hour12: false });
+    }
+    if (field === 'power') el.classList.add(val === 'ON' ? 'on' : 'off');
+  }
+  if (cell) {
+    cell.classList.remove('flash'); void cell.offsetWidth; cell.classList.add('flash');
+    setTimeout(() => cell.classList.remove('flash'), 600);
+  }
+}
+
+// ============================================================
+// BLE send
+// ============================================================
+async function sendCmd(cmd) {
+  if (!connected || !rxChar) { addLog('err', 'Not connected'); return false; }
+  try {
+    await rxChar.writeValue(enc.encode(cmd));
+    addLog('tx', cmd);
+    return true;
+  } catch(err) {
+    addLog('err', 'Send failed: ' + err.message);
+    return false;
+  }
+}
+
+async function sendManual() {
+  const inp = document.getElementById('inp-send');
+  const msg = inp.value.trim();
+  if (!msg) return;
+  await sendCmd(msg);
+  inp.value = '';
+}
+
+// ============================================================
+// Helpers
+// ============================================================
+function setControls(on) {
+  // BLE-dependent controls
+  ['btn-raw-on','btn-raw-off','inp-send','btn-send',
+   'btn-tminus','btn-tplus','sel-lookup','sel-universal',
+   'btn-test-off','btn-test-on','btn-test-temp',
+   'sel-wifi','inp-wifi-pass','inp-wifi-manual','btn-wifi-rescan',
+   'inp-admin-pass','btn-admin-unlock','btn-find-rx','btn-find-rx-lrn']
+    .forEach(id => { const e = document.getElementById(id); if (e) e.disabled = !on; });
+
+  if (!on) {
+    updateTestButtons();  // re-evaluates with connected=false → disables test buttons
+    resetLearnUi();       // resets learn state + calls applyLearnModeUi('PROTOCOL')
+  } else {
+    updateLearnButtons();
+    updateTestButtons();  // re-evaluates with connected=true → enables based on section
+    applyLearnModeUi(learnCtrlMode); // apply current mode restrictions on top of connected state
+  }
+  syncAdminControls();
+}
+
+function setStrip(type, msg) {
+  const el = document.getElementById('status-strip');
+  el.className = type || '';
+  document.getElementById('strip-msg').textContent = msg;
+}
+
+function setPill(id, cls, txt) {
+  const el = document.getElementById(id);
+  if (el) { el.className = cls; el.textContent = txt; }
+}
+
+function variantNameById(id) {
+  const v = ALL_VARIANTS.find(v => v.id === id);
+  return v ? v.name : 'Variant ' + id;
+}
+
+function setConfirmedVariant(id, name) {
+  activeVariantId = id;
+  activeVariantName = name || variantNameById(id);
+  document.getElementById('active-name').textContent = activeVariantName;
+  document.getElementById('active-tag').style.display = 'block';
+  updateSaveChecklist();
+}
+
+function resetConfirmedProtocol() {
+  activeVariantId = null;
+  activeVariantName = '';
+  pendingTestVariant = null;
+  const activeNameEl = document.getElementById('active-name');
+  const activeTagEl = document.getElementById('active-tag');
+  if (activeNameEl) activeNameEl.textContent = '—';
+  if (activeTagEl) activeTagEl.style.display = 'none';
+}
+
+function syncFirmwareVariant(val) {
+  const id = parseInt(val, 10);
+  if (!Number.isFinite(id)) return;
+  const sel = document.getElementById('sel-universal');
+  if (sel) sel.value = String(id);
+}
+
+function syncTxTemp(val) {
+  const temp = parseInt(val, 10);
+  if (!Number.isFinite(temp)) return;
+  testTemp = Math.max(16, Math.min(30, temp));
+  document.getElementById('temp-display').innerHTML = testTemp + '<span>°C</span>';
+}
+
+function confirmPendingProtocolTest() {
+  if (!pendingTestVariant) return;
+  setConfirmedVariant(pendingTestVariant.id, pendingTestVariant.name);
+  addLog('sys', 'Protocol confirmed: ' + pendingTestVariant.name);
+  pendingTestVariant = null;
+}
+
+function beginSaveTransaction(mode) {
+  if (saveTxn) failSaveTransaction('Previous save interrupted');
+  const pending = new Set(mode === 'LEARNED'
+    ? ['WIFI', 'MODE']
+    : ['WIFI', 'MODE', 'SAVE']);
+
+  return new Promise((resolve, reject) => {
+    saveTxn = {
+      mode,
+      pending,
+      resolve,
+      reject,
+      timer: setTimeout(() => failSaveTransaction('Timed out waiting for firmware ACK'), 10000),
+    };
+  });
+}
+
+function completeSaveTransaction() {
+  if (!saveTxn || saveTxn.pending.size > 0) return;
+  clearTimeout(saveTxn.timer);
+  const resolve = saveTxn.resolve;
+  saveTxn = null;
+  resolve();
+}
+
+function failSaveTransaction(reason) {
+  if (!saveTxn) return;
+  clearTimeout(saveTxn.timer);
+  const reject = saveTxn.reject;
+  saveTxn = null;
+  reject(new Error(reason));
+}
+
+function noteSaveAck(key, val) {
+  if (!saveTxn) return;
+  if (key === 'ERR') {
+    failSaveTransaction(val || 'Firmware error');
+    return;
+  }
+  if (key === 'WIFI' && val === 'OK') saveTxn.pending.delete('WIFI');
+  if (key === 'SAVE' && val === 'OK') saveTxn.pending.delete('SAVE');
+  if (key === 'LRN' && val === 'MODE:' + saveTxn.mode) saveTxn.pending.delete('MODE');
+  completeSaveTransaction();
+}
+
+function updateVersionLine() {
+  const el = document.getElementById('version-line');
+  if (!el) return;
+  const mismatch = firmwareVersion && firmwareVersion !== IRTRACE_WEB_VERSION;
+  el.textContent = 'ESP32-C5 / WEB ' + IRTRACE_WEB_VERSION +
+                   ' / FW ' + (firmwareVersion || '--') +
+                   (mismatch ? ' !' : '');
+  el.classList.toggle('ver-mismatch', !!mismatch);
+}
+
+let logFirst = true;
+function addLog(type, msg) {
+  const el = document.getElementById('log');
+  if (logFirst) { el.innerHTML = ''; logFirst = false; }
+  const ts  = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  const row = document.createElement('div');
+  row.className = 'll';
+  row.innerHTML = `<span class="lt">${ts}</span><span class="lm ${type}">${esc(msg)}</span>`;
+  el.appendChild(row);
+  while (el.children.length > 300) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById('log').innerHTML =
+    '<div class="ll"><span class="lm sys">Log cleared.</span></div>';
+  logFirst = false;
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ============================================================
+// Learn Fallback — state & UI
+// ============================================================
+const LEARN_SLOT_NAMES = [
+  'OFF',
+  'COOL 16','COOL 17','COOL 18','COOL 19','COOL 20',
+  'COOL 21','COOL 22','COOL 23','COOL 24','COOL 25',
+  'COOL 26','COOL 27','COOL 28','COOL 29','COOL 30'
+];
+const LEARN_NUM_SLOTS = 16;
+
+let learnSlotStates  = Array(LEARN_NUM_SLOTS).fill('EMPTY'); // EMPTY|CAPTURED|SAVED
+let learnCtrlMode    = 'PROTOCOL';  // PROTOCOL | LEARNED
+let learnActiveSlot  = -1;          // selected slot index (-1 = none)
+let learnPendingCapture = false;    // waiting for remote button press
+
+function buildLearnSlotGrid() {
+  const grid = document.getElementById('lrn-slot-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  LEARN_SLOT_NAMES.forEach((name, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'lrn-slot';
+    cell.id = 'lrn-slot-' + i;
+    cell.innerHTML = `<div class="lrn-slot-name">${name}</div><div class="lrn-slot-dot"></div>`;
+    cell.onclick = () => learnSelectSlot(i);
+    grid.appendChild(cell);
+  });
+  updateLearnSlotGrid();
+}
+
+function updateLearnSlotGrid() {
+  LEARN_SLOT_NAMES.forEach((_, i) => {
+    const cell = document.getElementById('lrn-slot-' + i);
+    if (!cell) return;
+    cell.className = 'lrn-slot';
+    if (!connected) { cell.classList.add('disabled'); return; }
+    const state = learnSlotStates[i];
+    if (state === 'SAVED')    cell.classList.add('saved');
+    if (state === 'CAPTURED') cell.classList.add('captured');
+    if (i === learnActiveSlot) cell.classList.add('selected');
+  });
+}
+
+function learnSelectSlot(i) {
+  if (!connected) return;
+  learnActiveSlot = i;
+  updateLearnSlotGrid();
+  updateLearnButtons();
+  const state = learnSlotStates[i];
+  if (state === 'SAVED') {
+    setLearnStatus('Slot ' + LEARN_SLOT_NAMES[i] + ' already saved — press DELETE to re-learn.', 'ok');
+  } else if (state === 'CAPTURED') {
+    setLearnStatus('Slot ' + LEARN_SLOT_NAMES[i] + ' captured — press SAVE to store or DISCARD to retry.');
+  } else {
+    setLearnStatus('Slot ' + LEARN_SLOT_NAMES[i] + ' selected — press LEARN to capture.');
+  }
+}
+
+function updateLearnButtons() {
+  const state = learnActiveSlot >= 0 ? learnSlotStates[learnActiveSlot] : null;
+  const hasSlot = learnActiveSlot >= 0 && connected;
+  const captured = hasSlot && state === 'CAPTURED';
+  const saved    = hasSlot && state === 'SAVED';
+  const hasAnyLearnedData = learnSlotStates.some(state => state !== 'EMPTY');
+  const allSlotsSaved = learnSlotStates.every(state => state === 'SAVED');
+
+  document.getElementById('btn-lrn-learn').disabled   = !hasSlot || saved;
+  document.getElementById('btn-lrn-replay').disabled  = !captured;
+  document.getElementById('btn-lrn-save').disabled    = !captured;
+  document.getElementById('btn-lrn-discard').disabled = !captured;
+  document.getElementById('btn-lrn-delete').disabled  = !saved;
+  document.getElementById('btn-lrn-delete-all').disabled = !connected || !hasAnyLearnedData;
+
+  document.getElementById('btn-mode-proto').disabled   = !connected;
+  document.getElementById('btn-mode-learned').disabled = !connected || !allSlotsSaved;
+}
+
+function applyLearnModeUi(mode) {
+  learnCtrlMode = mode;
+  const pill = document.getElementById('lrn-mode-pill');
+  const bp   = document.getElementById('btn-mode-proto');
+  const bl   = document.getElementById('btn-mode-learned');
+  if (mode === 'LEARNED') {
+    if (pill) { pill.className = 'pill pill-live'; pill.textContent = 'Learned'; }
+    if (bp)   bp.className  = 'btn-lrn-mode';
+    if (bl)   bl.className  = 'btn-lrn-mode active-learned';
+  } else {
+    if (pill) { pill.className = 'pill pill-proto'; pill.textContent = 'Protocol'; }
+    if (bp)   bp.className  = 'btn-lrn-mode active-protocol';
+    if (bl)   bl.className  = 'btn-lrn-mode';
+  }
+
+  const isLearned = mode === 'LEARNED';
+
+  // ── Protocol discovery section — disabled entirely in learned mode ────────
+  // Dropdowns, temp buttons, shared test buttons, and protocol find-rx are all
+  // blocked when learned mode is active. The notice banner explains why.
+  ['sel-lookup','sel-universal','btn-tminus','btn-tplus',
+   'btn-test-off','btn-test-on','btn-test-temp','btn-find-rx']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = isLearned || !connected;
+    });
+
+  // Show/hide the disabled notice inside the discovery card
+  const notice = document.getElementById('proto-mode-notice');
+  if (notice) notice.style.display = isLearned ? 'block' : 'none';
+
+  // ── Learn card Find RX — only active in learned mode and connected ─────────
+  const findLrn = document.getElementById('btn-find-rx-lrn');
+  if (findLrn) findLrn.disabled = !isLearned || !connected;
+
+  // In protocol mode, re-evaluate test button state based on active dropdown
+  if (!isLearned) updateTestButtons();
+
+  updateLearnButtons();
+  updateSaveChecklist();
+}
+
+function setLearnStatus(msg, type) {
+  const el = document.getElementById('lrn-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'lrn-status-line' + (type ? ' ' + type : '');
+}
+
+function handleLearnMsg(val) {
+  // val is the part after LRN: e.g. "SLOT:3:SAVED", "MODE:LEARNED", etc.
+  const parts = val.split(':');
+  const sub   = parts[0].toUpperCase();
+
+  switch (sub) {
+    case 'MODE':
+      applyLearnModeUi(parts[1] || 'PROTOCOL');
+      break;
+
+    case 'SLOT': {
+      const idx   = parseInt(parts[1]);
+      const state = (parts[2] || 'EMPTY').toUpperCase();
+      if (idx >= 0 && idx < LEARN_NUM_SLOTS) {
+        learnSlotStates[idx] = state;
+        updateLearnSlotGrid();
+        updateLearnButtons();
+        updateSaveChecklist();
+      }
+      break;
+    }
+
+    case 'ACTIVE': {
+      const idx = parseInt(parts[1]);
+      if (idx >= 0 && idx < LEARN_NUM_SLOTS) {
+        learnActiveSlot = idx;
+        updateLearnSlotGrid();
+        updateLearnButtons();
+      } else if (idx < 0) {
+        learnActiveSlot = -1;
+        updateLearnSlotGrid();
+        updateLearnButtons();
+      }
+      break;
+    }
+
+    case 'WAIT':
+      learnPendingCapture = true;
+      setLearnStatus('Point remote at sensor and press the button for ' + (parts[1] || '?') + '…', 'capturing');
+      break;
+
+    case 'CAPTURED': {
+      learnPendingCapture = false;
+      const idx = parseInt(parts[1]);
+      setLearnStatus('Captured slot ' + LEARN_SLOT_NAMES[idx] + ' — press TEST to verify, then SAVE.', 'ok');
+      break;
+    }
+
+    case 'LEN':
+      // e.g. LRN:LEN:247 — just log
+      addLog('sys', 'Learn: ' + parts[1] + ' mark/space pairs captured');
+      break;
+
+    case 'REPLAYED':
+      setLearnStatus('Test replay sent — did the AC respond? If yes, press SAVE.', 'ok');
+      break;
+
+    case 'SAVED': {
+      const idx = parseInt(parts[1]);
+      setLearnStatus('Slot ' + LEARN_SLOT_NAMES[idx] + ' saved to device storage.', 'ok');
+      break;
+    }
+
+    case 'DISCARDED':
+      learnPendingCapture = false;
+      setLearnStatus('Capture discarded. Previously saved data (if any) is unchanged.', '');
+      break;
+
+    case 'DELETED_ALL':
+      learnPendingCapture = false;
+      learnActiveSlot = -1;
+      learnSlotStates = Array(LEARN_NUM_SLOTS).fill('EMPTY');
+      updateLearnSlotGrid();
+      updateLearnButtons();
+      updateSaveChecklist();
+      setLearnStatus('All learned slots deleted. Ready for fresh learning.', 'ok');
+      break;
+
+    default:
+      addLog('rx', 'LRN:' + val);
+  }
+}
+
+// ── UI action handlers ────────────────────────────────────────
+
+async function setLearnMode(mode) {
+  if (mode === 'LEARNED' && !learnSlotStates.every(state => state === 'SAVED')) {
+    addLog('err', 'Save all 16 learned slots before enabling Learned Fallback');
+    return;
+  }
+  await sendCmd('LRN:MODE:' + mode);
+}
+
+async function learnBeginUi() {
+  if (learnActiveSlot < 0) { addLog('err', 'Select a slot first'); return; }
+  await sendCmd('LRN:BEGIN:' + learnActiveSlot);
+}
+
+async function learnReplayUi() {
+  await sendCmd('LRN:REPLAY');
+}
+
+async function learnSaveUi() {
+  await sendCmd('LRN:SAVE');
+}
+
+async function learnDiscardUi() {
+  await sendCmd('LRN:DISCARD');
+}
+
+async function learnDeleteUi() {
+  if (learnActiveSlot < 0) return;
+  if (!confirm('Delete saved slot "' + LEARN_SLOT_NAMES[learnActiveSlot] + '"?')) return;
+  await sendCmd('LRN:DELETE:' + learnActiveSlot);
+}
+
+async function learnDeleteAllUi() {
+  if (!connected) return;
+  const count = learnSlotStates.filter(state => state !== 'EMPTY').length;
+  if (count === 0) return;
+  if (!confirm('Delete all learned IR slots from device storage? This cannot be undone.')) return;
+  await sendCmd('LRN:DELETE_ALL');
+}
+
+// Reset learn UI on disconnect
+function resetLearnUi() {
+  learnPendingCapture = false;
+  learnActiveSlot  = -1;
+  learnSlotStates  = Array(LEARN_NUM_SLOTS).fill('EMPTY');
+  applyLearnModeUi('PROTOCOL');
+  updateLearnSlotGrid();
+  updateLearnButtons();
+  updateSaveChecklist();
+  setLearnStatus('Connect to device to manage learned slots.');
+}
+
+// ============================================================
+// Init — build universal dropdown on page load
+// ============================================================
+(function buildUniversalDropdown() {
+  const sel = document.getElementById('sel-universal');
+  // First option is already "Local Setup (RAW)" — add all 69 variants after
+  ALL_VARIANTS.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.id;
+    opt.textContent = v.id + ' — ' + v.name;
+    sel.appendChild(opt);
+  });
+})();
+
+resetAdminUi();
+buildLearnSlotGrid();
+resetLearnUi();
+updateVersionLine();
+
+// Web Bluetooth support check
+if (!navigator.bluetooth) {
+  setStrip('err', 'Web Bluetooth not supported — use Chrome on Android or Desktop');
+  document.getElementById('btn-connect').disabled = true;
+}
+</script>
+</body>
+</html>
