@@ -121,11 +121,12 @@
   .ir-cell.full:last-child      { border-bottom: none; }
   .ir-field { font-family: var(--mono); font-size: .6rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #a0aab8; margin-bottom: 5px; }
   .ir-val   { font-family: var(--mono); font-size: 1.2rem; font-weight: 700; color: var(--text); transition: color .2s; min-height: 1.4rem; }
-  .ir-val.empty { color: #d1d5db; font-size: 1rem; }
-  .ir-val.proto { color: var(--accent); font-size: 1rem; }
-  .ir-val.on    { color: var(--green); }
-  .ir-val.off   { color: var(--red); }
-  .ir-val.na    { color: #c5cad4; font-size: .9rem; }
+  .ir-val.empty   { color: #d1d5db; font-size: 1rem; }
+  .ir-val.proto   { color: var(--accent); font-size: 1rem; }
+  .ir-val.unknown { color: var(--orange); font-size: 1rem; }
+  .ir-val.on      { color: var(--green); }
+  .ir-val.off     { color: var(--red); }
+  .ir-val.na      { color: #c5cad4; font-size: .9rem; }
   @keyframes flash { 0%{background:#dbeafe} 100%{background:var(--surface)} }
   .ir-cell.flash { animation: flash .5s ease-out forwards; }
 
@@ -709,6 +710,27 @@
         <button class="btn-lrn delete"  id="btn-lrn-delete-all" disabled onclick="learnDeleteAllUi()">DELETE ALL</button>
       </div>
 
+      <!-- Saved learned slot test controls -->
+      <div class="section-divider"></div>
+      <div class="section-head">
+        <span class="section-label">Learned Slot Test</span>
+        <span class="section-badge">Saved slots</span>
+      </div>
+      <div id="lrn-test-notice" class="proto-disabled-notice">
+        Switch to Learned Fallback after all 16 slots are saved to test stored IR commands.
+      </div>
+      <div class="temp-ctrl-row">
+        <span class="temp-ctrl-lbl">Temp</span>
+        <button class="btn-adj" id="btn-lrn-tminus" disabled onclick="adjustTemp(-1)">-</button>
+        <div class="temp-display-big" id="lrn-temp-display">24<span>&deg;C</span></div>
+        <button class="btn-adj" id="btn-lrn-tplus" disabled onclick="adjustTemp(+1)">+</button>
+      </div>
+      <div class="test-row">
+        <button class="btn-test off"  id="btn-lrn-test-off"  disabled onclick="testLearnedSection('off')">TEST OFF</button>
+        <button class="btn-test on"   id="btn-lrn-test-on"   disabled onclick="testLearnedSection('on')">TEST ON</button>
+        <button class="btn-test temp" id="btn-lrn-test-temp" disabled onclick="testLearnedSection('temp')">SET TEMP</button>
+      </div>
+
       <!-- ── Find AC Receiver (Learned mode) ─────────────── -->
       <div class="section-divider"></div>
       <button class="btn-find" id="btn-find-rx-lrn" disabled onclick="toggleFindRxLrn()">
@@ -1088,6 +1110,7 @@ let testTemp       = 24;
 let activeVariantId   = null;  // last variant confirmed by TX:OK
 let activeVariantName = '';
 let pendingTestVariant = null;
+let pendingLearnedTest = '';
 let saveTxn = null;
 let wifiList = [];
 let adminUnlocked = false;
@@ -1160,6 +1183,7 @@ function onDisconnected() {
   connected = false; rxChar = null;
   failSaveTransaction('Disconnected');
   pendingTestVariant = null;
+  pendingLearnedTest = '';
   resetConfirmedProtocol();
   resetWifiUi('Scan Ready');
   resetLearnUi();   // clears learnActiveSlot, learnSlotStates[], ctrl mode display —
@@ -1217,7 +1241,10 @@ function onNotify(event) {
       addLog('sys', 'TX repeat: ' + val);
       break;
     case 'TX':
-      if (val === 'OK') confirmPendingProtocolTest();
+      if (val === 'OK') {
+        confirmPendingProtocolTest();
+        confirmPendingLearnedTest();
+      }
       break;
     case 'PROTOCOL': onProtocolReceived(val);    break;
     case 'POWER':    updateIR('power',    val);  break;
@@ -1257,6 +1284,7 @@ function onNotify(event) {
       break;
     case 'ERR':
       pendingTestVariant = null;
+      pendingLearnedTest = '';
       addLog('err', val);
       break;
     case 'LRN':
@@ -1611,17 +1639,32 @@ function onProtocolReceived(rawVal) {
   // Strip repeat suffix e.g. "MITSUBISHI112 (Repeat)" → "MITSUBISHI112"
   const proto = rawVal.replace(/\s*\(.*\)/, '').trim().toUpperCase();
 
-  // Update IR grid
+  // Update IR grid and show discovery card
   updateIR('protocol', rawVal);
-
-  // Update discovery card pill
-  document.getElementById('proto-pill').textContent = proto;
-
-  // Populate lookup dropdown from family map
-  populateLookupDropdown(proto);
-
-  // Show the discovery card
   document.getElementById('discovery-card').style.display = 'block';
+
+  // ── UNKNOWN frame ─────────────────────────────────────────────────────────
+  // Frame received but protocol not recognised by the library.
+  // Show a clear notice in the lookup section; do NOT call populateLookupDropdown
+  // because the "not in lookup table — use All Protocols" message is misleading
+  // here — the user cannot pick a protocol to test when the frame is unrecognised.
+  if (proto === 'UNKNOWN') {
+    setPill('proto-pill', 'pill pill-idle', 'UNKNOWN');
+    const sel        = document.getElementById('sel-lookup');
+    const notice     = document.getElementById('no-candidate');
+    const countBadge = document.getElementById('candidate-count');
+    if (sel)        { sel.innerHTML = '<option value="-1">— Unrecognised frame —</option>'; }
+    if (notice)     { notice.style.display = 'block';
+                      notice.textContent   = '⚠️ Frame received but protocol unrecognised — point remote directly at sensor and try again.'; }
+    if (countBadge) { countBadge.textContent = ''; }
+    // If lookup was the active section, test buttons must reflect no valid candidate
+    if (activeTestSection === 'lookup') updateTestButtons();
+    return;
+  }
+
+  // ── Known protocol ────────────────────────────────────────────────────────
+  setPill('proto-pill', 'pill pill-proto', proto);
+  populateLookupDropdown(proto);
 }
 
 // ============================================================
@@ -1750,6 +1793,40 @@ async function testSection(action) {
 }
 
 // ============================================================
+// Learned fallback test buttons
+// Sends off/on/t directly; firmware maps commands to saved slots in learned mode.
+// ============================================================
+async function testLearnedSection(action) {
+  if (!connected) return;
+  const allSlotsSaved = learnSlotStates.every(state => state === 'SAVED');
+  if (learnCtrlMode !== 'LEARNED' || !allSlotsSaved) {
+    addLog('err', 'Switch to Learned Fallback after saving all 16 slots before testing learned commands');
+    return;
+  }
+
+  let cmd;
+  let label;
+  if (action === 'off') {
+    cmd = 'off';
+    label = 'OFF';
+  } else if (action === 'on') {
+    cmd = 'on ' + testTemp;
+    label = 'ON ' + testTemp + 'C';
+  } else {
+    cmd = 't ' + testTemp;
+    label = 'SET TEMP ' + testTemp + 'C';
+  }
+
+  pendingLearnedTest = label;
+  if (!(await sendCmd(cmd))) {
+    pendingLearnedTest = '';
+    return;
+  }
+  setLearnStatus('Sending learned test: ' + label + '...', 'capturing');
+  addLog('sys', 'Testing learned slot: ' + cmd);
+}
+
+// ============================================================
 // Find AC Receiver — toggle find mode on/off
 // Protocol mode: syncs active dropdown variant before starting.
 // ============================================================
@@ -1769,6 +1846,11 @@ async function toggleFindRx() {
 // Learned mode Find RX — no variant sync needed (firmware uses COOL_24 slot directly)
 async function toggleFindRxLrn() {
   if (!connected) return;
+  const allSlotsSaved = learnSlotStates.every(state => state === 'SAVED');
+  if (learnCtrlMode !== 'LEARNED' || !allSlotsSaved) {
+    addLog('err', 'Switch to Learned Fallback after saving all 16 slots before using learned Find AC Receiver');
+    return;
+  }
   if (findRxActive) {
     await sendCmd('FIND_RX:OFF');
   } else {
@@ -1808,9 +1890,16 @@ function flashFindPulse() {
 // ============================================================
 // Temperature control (shared between both sections)
 // ============================================================
+function renderTestTemp() {
+  ['temp-display', 'lrn-temp-display'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = testTemp + '<span>&deg;C</span>';
+  });
+}
+
 function adjustTemp(delta) {
   testTemp = Math.max(16, Math.min(30, testTemp + delta));
-  document.getElementById('temp-display').innerHTML = testTemp + '<span>°C</span>';
+  renderTestTemp();
 }
 
 // ============================================================
@@ -1825,7 +1914,9 @@ function updateIR(field, val) {
   el.className   = 'ir-val' + (na ? ' na' : '');
   if (!na) {
     if (field === 'protocol') {
-      el.classList.add('proto');
+      // UNKNOWN frame → orange warning style; known protocol → blue proto style.
+      // Timestamp updated in both cases — a frame was received either way.
+      el.classList.add(val.toUpperCase() === 'UNKNOWN' ? 'unknown' : 'proto');
       document.getElementById('last-ts').textContent =
         'Last: ' + new Date().toLocaleTimeString('en-GB', { hour12: false });
     }
@@ -1928,7 +2019,7 @@ function syncTxTemp(val) {
   const temp = parseInt(val, 10);
   if (!Number.isFinite(temp)) return;
   testTemp = Math.max(16, Math.min(30, temp));
-  document.getElementById('temp-display').innerHTML = testTemp + '<span>°C</span>';
+  renderTestTemp();
 }
 
 function confirmPendingProtocolTest() {
@@ -1936,6 +2027,13 @@ function confirmPendingProtocolTest() {
   setConfirmedVariant(pendingTestVariant.id, pendingTestVariant.name);
   addLog('sys', 'Protocol confirmed: ' + pendingTestVariant.name);
   pendingTestVariant = null;
+}
+
+function confirmPendingLearnedTest() {
+  if (!pendingLearnedTest) return;
+  setLearnStatus('Learned test sent: ' + pendingLearnedTest + '.', 'ok');
+  addLog('sys', 'Learned test confirmed: ' + pendingLearnedTest);
+  pendingLearnedTest = '';
 }
 
 function beginSaveTransaction(mode) {
@@ -2092,6 +2190,21 @@ function updateLearnButtons() {
 
   document.getElementById('btn-mode-proto').disabled   = !connected;
   document.getElementById('btn-mode-learned').disabled = !connected || !allSlotsSaved;
+
+  const learnedTestEnabled = connected && learnCtrlMode === 'LEARNED' && allSlotsSaved;
+  [
+    'btn-lrn-tminus','btn-lrn-tplus',
+    'btn-lrn-test-off','btn-lrn-test-on','btn-lrn-test-temp'
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !learnedTestEnabled;
+  });
+
+  const learnedNotice = document.getElementById('lrn-test-notice');
+  if (learnedNotice) learnedNotice.style.display = learnedTestEnabled ? 'none' : 'block';
+
+  const findLrn = document.getElementById('btn-find-rx-lrn');
+  if (findLrn) findLrn.disabled = !learnedTestEnabled;
 }
 
 function applyLearnModeUi(mode) {
@@ -2270,6 +2383,7 @@ async function learnDeleteAllUi() {
 // Reset learn UI on disconnect
 function resetLearnUi() {
   learnPendingCapture = false;
+  pendingLearnedTest = '';
   learnActiveSlot  = -1;
   learnSlotStates  = Array(LEARN_NUM_SLOTS).fill('EMPTY');
   applyLearnModeUi('PROTOCOL');
@@ -2296,6 +2410,7 @@ function resetLearnUi() {
 resetAdminUi();
 buildLearnSlotGrid();
 resetLearnUi();
+renderTestTemp();
 updateVersionLine();
 
 // Web Bluetooth support check
